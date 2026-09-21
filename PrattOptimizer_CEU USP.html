@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CEU Pratt Truss Optimizer Lab - Degree in Architecture - Maribel Castilla</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; }
+        canvas { touch-action: none; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        // --- ICONS (Inline SVGs for standalone compatibility) ---
+        const RotateCcw = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+        );
+        const Info = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+        );
+        const Activity = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        );
+
+        const PrattOptimizer = () => {
+            // --- State ---
+            const [span, setSpan] = React.useState(16);
+            const [depth, setDepth] = React.useState(1,5);
+            const [panels, setPanels] = React.useState(8);
+            const [load, setLoad] = React.useState(10);
+            const [bucklingPenalty, setBucklingPenalty] = React.useState(true);
+
+            // --- Canvas Refs ---
+            const trussCanvasRef = React.useRef(null);
+            const chartCanvasRef = React.useRef(null);
+
+            // --- Helper Calculations for Display ---
+            const panelWidth = span / panels;
+            const diagonalAngle = (Math.atan(depth / panelWidth) * (180 / Math.PI)).toFixed(1);
+
+            // --- Calculation Logic ---
+            const calculateSystemState = (currentDepth, currentPanels) => {
+                const nodes = [];
+                const members = [];
+                const panelWidth = span / currentPanels;
+
+                // 1. Generate Nodes
+                for (let i = 0; i <= currentPanels; i++) {
+                    nodes.push({ x: i * panelWidth, y: 0, id: i });
+                }
+                for (let i = 0; i <= currentPanels; i++) {
+                    nodes.push({ x: i * panelWidth, y: currentDepth, id: i + currentPanels + 1 });
+                }
+
+                // 2. Loads & Reactions
+                // Loads: Internal nodes have P, End nodes have P/2.
+                // Total Load = (N-1)*P + 2*(P/2) = (N-1)*P + P = N*P
+                const totalLoad = currentPanels * load;
+                const reaction = totalLoad / 2;
+
+                const addMember = (u, v, type, force) => {
+                    const nodeA = nodes.find(n => n.id === u);
+                    const nodeB = nodes.find(n => n.id === v);
+                    if(!nodeA || !nodeB) return;
+                    const length = Math.sqrt(Math.pow(nodeB.x - nodeA.x, 2) + Math.pow(nodeB.y - nodeA.y, 2));
+                    members.push({ start: u, end: v, type, force, length });
+                };
+
+                const getMoment = (x) => {
+                    let m = reaction * x;
+                    
+                    // Subtract load at x=0 (Top Left) which is P/2
+                    m -= (load / 2) * x;
+
+                    // Subtract internal loads
+                    for(let k=1; k < currentPanels; k++) {
+                        const loadPos = k * panelWidth;
+                        if(loadPos < x) {
+                            m -= load * (x - loadPos);
+                        }
+                    }
+                    return Math.max(0, m);
+                };
+
+                // --- Generate Members ---
+                for (let i = 0; i < currentPanels; i++) {
+                    const b_left = i;
+                    const b_right = i + 1;
+                    const t_left = (currentPanels + 1) + i;
+                    const t_right = (currentPanels + 1) + i + 1;
+
+                    const x_left = i * panelWidth;
+                    const x_right = (i + 1) * panelWidth;
+
+                    const theta = Math.atan(currentDepth / panelWidth);
+                    const sinTheta = Math.sin(theta);
+
+                    // Chords
+                    let f_top = 0, f_bot = 0;
+                    if (i < currentPanels / 2) {
+                        f_top = -1 * getMoment(x_right) / currentDepth;
+                        f_bot = getMoment(x_left) / currentDepth;
+                    } else {
+                        f_top = -1 * getMoment(x_left) / currentDepth;
+                        f_bot = getMoment(x_right) / currentDepth;
+                    }
+                    addMember(t_left, t_right, 'chord-top', f_top);
+                    addMember(b_left, b_right, 'chord-bottom', f_bot);
+
+                    // Diagonals
+                    // Shear calculation must now account for the P/2 load at the start
+                    // Shear in panel i = Reaction - P/2 - (i * P)
+                    let dForce = 0;
+                    if (i < currentPanels / 2) {
+                        // Left Half
+                        const shear = reaction - (load / 2) - (i * load);
+                        dForce = Math.abs(shear) / sinTheta; 
+                        addMember(t_left, b_right, 'diagonal', dForce);
+                    } else {
+                        // Right Half (Symmetry)
+                        const symIndex = currentPanels - 1 - i;
+                        const shearSym = reaction - (load / 2) - (symIndex * load);
+                        dForce = Math.abs(shearSym) / sinTheta;
+                        addMember(t_right, b_left, 'diagonal', dForce);
+                    }
+
+                    // Verticals
+                    if (i < currentPanels - 1) {
+                        let vForce = 0;
+                        const isCenterPost = (i === (currentPanels / 2) - 1);
+                        
+                        if (isCenterPost) {
+                            // Center post carries the load directly above it
+                            vForce = -load;
+                        } else if (i < currentPanels / 2 - 1) {
+                            // Left side verticals (not center)
+                            // V = Shear of next panel
+                            // Shear next = Reaction - P/2 - ((i+1) * P)
+                            const shearNext = reaction - (load / 2) - ((i + 1) * load);
+                            vForce = -1 * Math.abs(shearNext);
+                        } else {
+                            // Right side verticals
+                            const distFromEnd = (currentPanels - 2) - i;
+                            const shearNext = reaction - (load / 2) - ((distFromEnd + 1) * load);
+                            vForce = -1 * Math.abs(shearNext);
+                        }
+                        addMember(t_right, b_right, 'vertical', vForce);
+                    }
+                }
+                
+                // End Posts
+                // Carries full Reaction compression (from support up to top node)
+                addMember(currentPanels+1, 0, 'vertical', -Math.abs(reaction)); 
+                addMember(currentPanels*2+1, currentPanels, 'vertical', -Math.abs(reaction));
+
+                // 3. Calculate "Cost"
+                let totalVolume = 0;
+                members.forEach(m => {
+                    let areaProxy = Math.abs(m.force);
+                    if (bucklingPenalty && m.force < -0.01) { 
+                        areaProxy = Math.abs(m.force) * Math.pow(m.length, 0.8); 
+                    }
+                    totalVolume += areaProxy * m.length;
+                });
+
+                return { nodes, members, totalVolume };
+            };
+
+            // --- Graph Data ---
+            const graphData = React.useMemo(() => {
+                const dataPoints = [];
+                const minD = 0.5; 
+                const maxD = span / 2;
+                const step = 0.1;
+                
+                for (let d = minD; d <= maxD; d += step) {
+                    const dFixed = Math.round(d * 10) / 10;
+                    const res = calculateSystemState(dFixed, panels);
+                    dataPoints.push({ depth: dFixed, cost: res.totalVolume });
+                }
+                return dataPoints;
+            }, [span, panels, load, bucklingPenalty]);
+
+            const currentState = calculateSystemState(depth, panels);
+
+            // --- Max Forces Calculation ---
+            const maxForces = React.useMemo(() => {
+                const result = { 
+                    top: { val: 0, sign: -1 }, 
+                    bottom: { val: 0, sign: 1 }, 
+                    vertical: { val: 0, sign: -1 }, 
+                    diagonal: { val: 0, sign: 1 } 
+                };
+
+                currentState.members.forEach(m => {
+                    const absF = Math.abs(m.force);
+                    const sign = Math.sign(m.force) === 0 ? 1 : Math.sign(m.force); 
+                    
+                    if (m.type === 'chord-top') {
+                        if (absF > result.top.val) { result.top.val = absF; result.top.sign = sign; }
+                    }
+                    else if (m.type === 'chord-bottom') {
+                        if (absF > result.bottom.val) { result.bottom.val = absF; result.bottom.sign = sign; }
+                    }
+                    else if (m.type === 'vertical') {
+                        if (absF > result.vertical.val) { result.vertical.val = absF; result.vertical.sign = sign; }
+                    }
+                    else if (m.type === 'diagonal') {
+                        if (absF > result.diagonal.val) { result.diagonal.val = absF; result.diagonal.sign = sign; }
+                    }
+                });
+                return result;
+            }, [currentState]);
+
+            // --- Drawing Logic ---
+            React.useEffect(() => {
+                const canvas = trussCanvasRef.current;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return;
+
+                const width = canvas.width;
+                const height = canvas.height;
+                const padding = 40;
+                const drawWidth = width - padding * 2;
+                const drawHeight = height - padding * 2;
+                const scaleX = drawWidth / span;
+                const scaleY = drawHeight / (span/2); 
+                const scale = Math.min(scaleX, scaleY);
+                const offsetX = (width - (span * scale)) / 2;
+                const offsetY = height - padding; 
+
+                ctx.clearRect(0, 0, width, height);
+                
+                // Draw Members
+                currentState.members.forEach(m => {
+                    const n1 = currentState.nodes.find(n => n.id === m.start);
+                    const n2 = currentState.nodes.find(n => n.id === m.end);
+                    if(!n1 || !n2) return;
+
+                    const x1 = offsetX + n1.x * scale;
+                    const y1 = offsetY - n1.y * scale;
+                    const x2 = offsetX + n2.x * scale;
+                    const y2 = offsetY - n2.y * scale;
+
+                    ctx.beginPath();
+                    ctx.moveTo(x1, y1);
+                    ctx.lineTo(x2, y2);
+                    
+                    const isCompression = m.force < -0.1;
+                    const isTension = m.force > 0.1;
+                    
+                    if (!isCompression && !isTension) {
+                        ctx.strokeStyle = '#d1d5db'; 
+                        ctx.lineWidth = 1;
+                    } else {
+                        ctx.strokeStyle = isCompression ? '#ef4444' : '#3b82f6';
+                        const thickness = Math.min(12, Math.max(2, Math.abs(m.force) / (load * 0.4)));
+                        ctx.lineWidth = thickness;
+                    }
+                    ctx.stroke();
+                });
+
+                // Draw Nodes
+                ctx.fillStyle = '#1f2937';
+                currentState.nodes.forEach(n => {
+                    const x = offsetX + n.x * scale;
+                    const y = offsetY - n.y * scale;
+                    ctx.beginPath();
+                    ctx.arc(x, y, 4, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+
+                // Draw Loads (Green Arrows on Top Nodes)
+                ctx.strokeStyle = '#10b981'; 
+                ctx.fillStyle = '#10b981';
+                ctx.lineWidth = 2;
+                ctx.font = 'bold 11px sans-serif';
+                ctx.textAlign = 'center';
+
+                // We now iterate through ALL top nodes (0 to panels)
+                // Top nodes indices are: panels + 1 + i, where i goes from 0 to panels
+                for (let i = 0; i <= panels; i++) { 
+                    const nodeIndex = panels + 1 + i;
+                    const n = currentState.nodes.find(node => node.id === nodeIndex);
+                    
+                    if (n) {
+                        const x = offsetX + n.x * scale;
+                        const y = offsetY - n.y * scale;
+                        
+                        // Determine load value for label/size
+                        const isEndNode = (i === 0 || i === panels);
+                        const displayLoad = isEndNode ? load / 2 : load;
+                        const arrowLen = isEndNode ? 25 : 35; // Slightly shorter arrow for end loads
+
+                        // Text Value
+                        ctx.fillText(`${displayLoad}kN`, x, y - (arrowLen + 5));
+
+                        // Arrow Shaft
+                        ctx.beginPath();
+                        ctx.moveTo(x, y - arrowLen);
+                        ctx.lineTo(x, y - 4); 
+                        ctx.stroke();
+                        
+                        // Arrow Head
+                        ctx.beginPath();
+                        ctx.moveTo(x, y - 4);
+                        ctx.lineTo(x - 5, y - 14);
+                        ctx.lineTo(x + 5, y - 14);
+                        ctx.closePath();
+                        ctx.fill();
+                    }
+                }
+
+                const pinX = offsetX + 0;
+                const pinY = offsetY - 0;
+                ctx.fillStyle = '#6b7280';
+                ctx.beginPath();
+                ctx.moveTo(pinX, pinY);
+                ctx.lineTo(pinX - 8, pinY + 12);
+                ctx.lineTo(pinX + 8, pinY + 12);
+                ctx.fill();
+                
+                const rollX = offsetX + span * scale;
+                const rollY = offsetY - 0;
+                ctx.beginPath();
+                ctx.arc(rollX, rollY + 6, 6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillRect(rollX - 10, rollY + 12, 20, 2);
+
+            }, [currentState, span, panels, load]);
+
+            React.useEffect(() => {
+                const canvas = chartCanvasRef.current;
+                if (!canvas) return;
+                const ctx = canvas.getContext('2d');
+                if (!ctx) return;
+
+                const width = canvas.width;
+                const height = canvas.height;
+                const padding = 40;
+                
+                ctx.clearRect(0, 0, width, height);
+
+                const maxCost = Math.max(...graphData.map(d => d.cost));
+                const minCost = Math.min(...graphData.map(d => d.cost));
+                const maxDepth = Math.max(...graphData.map(d => d.depth));
+                const plotW = width - padding * 2;
+                const plotH = height - padding * 2;
+                const scaleX = plotW / maxDepth;
+                const scaleY = plotH / (maxCost - minCost * 0.8);
+
+                ctx.strokeStyle = '#9ca3af';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(padding, padding);
+                ctx.lineTo(padding, height - padding);
+                ctx.lineTo(width - padding, height - padding);
+                ctx.stroke();
+
+                ctx.fillStyle = '#6b7280';
+                ctx.font = '12px sans-serif';
+                ctx.fillText('Depth (m)', width/2, height - 10);
+                ctx.save();
+                ctx.translate(15, height/2);
+                ctx.rotate(-Math.PI/2);
+                ctx.fillText('Total Weight/Cost', 0, 0);
+                ctx.restore();
+
+                ctx.beginPath();
+                ctx.strokeStyle = '#4f46e5';
+                ctx.lineWidth = 3;
+
+                graphData.forEach((pt, i) => {
+                    const x = padding + pt.depth * scaleX;
+                    const y = (height - padding) - (pt.cost - minCost * 0.8) * scaleY;
+                    if (i === 0) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                });
+                ctx.stroke();
+
+                const currentCost = currentState.totalVolume;
+                const cx = padding + depth * scaleX;
+                const cy = (height - padding) - (currentCost - minCost * 0.8) * scaleY;
+
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath();
+                ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+                ctx.fill();
+                
+                let minIdx = 0;
+                let minVal = graphData[0].cost;
+                graphData.forEach((d, i) => {
+                    if(d.cost < minVal) {
+                        minVal = d.cost;
+                        minIdx = i;
+                    }
+                });
+                const optPt = graphData[minIdx];
+                const ox = padding + optPt.depth * scaleX;
+                const oy = (height - padding) - (optPt.cost - minCost * 0.8) * scaleY;
+                
+                ctx.fillStyle = '#10b981';
+                ctx.beginPath();
+                ctx.arc(ox, oy, 4, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillText(`Optimum: ${optPt.depth.toFixed(1)}m`, ox + 10, oy);
+
+            }, [graphData, depth]);
+
+            return (
+                <div className="w-full max-w-6xl mx-auto p-4 bg-gray-50 rounded-lg shadow-sm font-sans relative">
+                <div className="mb-6 border-b pb-4 flex justify-between items-end">
+                    <div>
+                        <h1 className="text-2xl font-bold text-gray-800">Pratt Truss Optimization Lab</h1>
+			<p className="font-semibold text-gray-700 flex items-center gap-2">Degree in Architecture USP CEU</p>
+                        <p className="text-gray-600 text-sm mt-1">
+                        Explore geometric efficiency with real-time feedback.
+                        </p>
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    
+                    {/* Controls Column */}
+                    <div className="bg-white p-4 rounded shadow border border-gray-100 flex flex-col gap-6">
+                        <div>
+                            <h3 className="font-semibold text-gray-700 flex items-center gap-2">
+                                <RotateCcw size={16} /> Parameters
+                            </h3>
+                            
+                            <div className="mt-4 space-y-4">
+                                <div>
+                                    <div className="flex justify-between text-sm mb-1">
+                                        <label className="text-gray-600">Depth (H)</label>
+                                        <span className="font-mono">{depth.toFixed(1)}m</span>
+                                    </div>
+                                    <input 
+                                        type="range" min="0.5" max={span/2} step="0.1" 
+                                        value={depth} onChange={(e) => setDepth(parseFloat(e.target.value))}
+                                        className="w-full"
+                                    />
+                                </div>
+                                
+                                <div>
+                                    <div className="flex justify-between text-sm mb-1">
+                                        <label className="text-gray-600">Span (L)</label>
+                                        <span className="font-mono">{span}m</span>
+                                    </div>
+                                    <input 
+                                        type="range" min="10" max="50" step="2" 
+                                        value={span} onChange={(e) => setSpan(parseFloat(e.target.value))}
+                                        className="w-full"
+                                    />
+                                </div>
+
+                                <div>
+                                    <div className="flex justify-between text-sm mb-1">
+                                        <label className="text-gray-600">Panels (N)</label>
+                                        <span className="font-mono">{panels}</span>
+                                    </div>
+                                    <input 
+                                        type="range" min="4" max="20" step="2" 
+                                        value={panels} onChange={(e) => setPanels(parseInt(e.target.value))}
+                                        className="w-full"
+                                    />
+                                </div>
+
+                                <div>
+                                    <div className="flex justify-between text-sm mb-1">
+                                        <label className="text-gray-600">Load per Node (P)</label>
+                                        <span className="font-mono">{load} kN</span>
+                                    </div>
+                                    <input 
+                                        type="range" min="1" max="50" step="1" 
+                                        value={load} onChange={(e) => setLoad(parseInt(e.target.value))}
+                                        className="w-full"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Max Forces Panel */}
+                        <div className="bg-gray-50 p-3 rounded text-sm border border-gray-200">
+                            <div className="font-semibold text-gray-700 mb-2 flex items-center gap-2">
+                                <Activity size={16} />
+                                Max Axial Forces
+                            </div>
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                                <div className="flex justify-between">
+                                    <span className="text-gray-500">Top Chord:</span>
+                                    <span className="font-mono font-medium text-red-600">
+                                        {maxForces.top.sign < 0 ? '' : '+'}{(-Math.abs(maxForces.top.val)).toFixed(1)} kN
+                                    </span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-500">Bot Chord:</span>
+                                    <span className="font-mono font-medium text-blue-600">
+                                        +{Math.abs(maxForces.bottom.val).toFixed(1)} kN
+                                    </span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-500">Verticals:</span>
+                                    <span className="font-mono font-medium text-red-600">
+                                        {(-Math.abs(maxForces.vertical.val)).toFixed(1)} kN
+                                    </span>
+                                </div>
+                                <div className="flex justify-between">
+                                    <span className="text-gray-500">Diagonals:</span>
+                                    <span className="font-mono font-medium text-blue-600">
+                                        +{Math.abs(maxForces.diagonal.val).toFixed(1)} kN
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-blue-50 p-3 rounded text-sm text-blue-800 border border-blue-100">
+                            <div className="flex items-center gap-2 font-semibold mb-2">
+                                <Info size={16}/> Simulation Physics
+                            </div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <input 
+                                    type="checkbox" 
+                                    checked={bucklingPenalty} 
+                                    onChange={(e) => setBucklingPenalty(e.target.checked)}
+                                    id="buckling"
+                                />
+                                <label htmlFor="buckling">Penalize Buckling</label>
+                            </div>
+                            <p className="text-xs opacity-80 leading-relaxed">
+                            Buckling penalty enabled: Compression member volume scales with L<sup>1.8</sup>.
+                            </p>
+                        </div>
+
+                        <div className="mt-auto">
+                            <div className="flex items-center gap-4 text-sm">
+                                <div className="flex items-center gap-1">
+                                    <div className="w-3 h-3 bg-red-500 rounded-full"></div> Compression
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <div className="w-3 h-3 bg-blue-500 rounded-full"></div> Tension
+                                </div>
+                                <div className="flex items-center gap-1">
+                                    <div className="w-3 h-3 bg-gray-300 rounded-full"></div> Zero
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Visuals Column */}
+                    <div className="lg:col-span-2 space-y-6 relative">
+                        
+                        {/* Truss Diagram */}
+                        <div className="bg-white p-4 rounded shadow border border-gray-100 min-h-[300px] flex flex-col relative">
+                            <h3 className="font-semibold text-gray-700 mb-2">Structure Geometry & Forces</h3>
+                            <div className="absolute top-4 right-4 flex flex-col items-end gap-2">
+                                <div className="text-xs font-mono bg-gray-100 px-2 py-1 rounded">
+                                    Aspect Ratio: {(span/depth).toFixed(1)}
+                                </div>
+                                <div className="text-xs font-mono bg-blue-50 text-blue-800 px-2 py-1 rounded border border-blue-100">
+                                    Diagonal Angle: {diagonalAngle}°
+                                </div>
+                            </div>
+                            <canvas 
+                                ref={trussCanvasRef} 
+                                width={700} 
+                                height={300}
+                                className="w-full h-full object-contain"
+                            />
+                        </div>
+
+                        {/* Optimization Graph */}
+                        <div className="bg-white p-4 rounded shadow border border-gray-100 min-h-[300px] flex flex-col">
+                            <h3 className="font-semibold text-gray-700 mb-2">Optimization Curve (Weight vs Depth)</h3>
+                            <div className="flex-1 flex items-center justify-center">
+                                <canvas 
+                                    ref={chartCanvasRef} 
+                                    width={700} 
+                                    height={250}
+                                    className="w-full h-full object-contain"
+                                />
+                            </div>
+                            <div className="text-center text-xs text-gray-500 mt-2">
+                                Red dot is current depth. Green dot is theoretical optimum.
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<PrattOptimizer />);
+    </script>
+</body>
+<!-- version 1.0 Maribel Castilla isabel.castillaheredia@ceu.es Dec 2025 -->
+</html>

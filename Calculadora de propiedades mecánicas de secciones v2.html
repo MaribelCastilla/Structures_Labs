@@ -1,0 +1,969 @@
+
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calculadora docente de perfiles - USP CEU - Escuela Politécnica Superior - Grado en Arquitectura</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #f8fafc; font-family: ui-sans-serif, system-ui, sans-serif; }
+        .input-group { margin-bottom: 0.75rem; }
+        label { display: block; font-size: 0.7rem; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.025em; }
+        input[type="number"], select { 
+            width: 100%; 
+            padding: 0.5rem; 
+            border: 1px solid #cbd5e1; 
+            border-radius: 0.375rem; 
+            margin-top: 0.2rem;
+            font-family: ui-monospace, monospace;
+            font-size: 0.875rem;
+        }
+        .result-card { background: white; border-radius: 0.75rem; border: 1px solid #e2e8f0; box-shadow: 0 1px 2px rgba(0,0,0,0.05); padding: 1.25rem; }
+        .toggle-active { background-color: #4f46e5 !important; color: white !important; }
+        .hidden-field { display: none; }
+        
+        /* Table Styles */
+        .gen-table-container { max-height: 400px; overflow-y: auto; }
+        .gen-table th { position: sticky; top: 0; background: #f1f5f9; z-index: 10; }
+        .gen-table tr:hover { background-color: #e0e7ff; cursor: pointer; }
+        .gen-table tr.selected { background-color: #4f46e5; color: white; }
+        .gen-table tr.selected td { color: white; }
+        .gen-table tr.selected .text-indigo-700 { color: white !important; }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-7xl mx-auto">
+        <!-- Header & Top Controls -->
+        <header class="mb-6 flex flex-col md:flex-row md:items-center justify-between gap-6 border-b pb-6">
+            
+            <!-- Logo + Title Container -->
+            <div class="flex items-center gap-6">
+                <!-- LOGO PLACEHOLDER: Cambia el src por la URL de tu logo -->
+                <img src="https://www.uspceu.com/Portals/_default/skins/uspceu-multi//assets/img/logos/Logo-CEU-Positivo.svg" alt="Logotipo USP CEU - Área de Mecánica de Sólidos y Medios Continuos" class="h-16 w-auto object-contain rounded-md shadow-sm">
+                
+                <div>
+                    <h1 id="ui-title" class="text-2xl font-black text-slate-900 tracking-tight">Calculadora de Perfiles</h1>
+                    <div class="flex gap-4 mt-2">
+                        <button id="mode-calc" onclick="switchMode('calc')" class="text-xs font-bold uppercase tracking-wider px-3 py-1 bg-slate-200 rounded text-slate-500 toggle-active">Calculadora</button>
+                        <button id="mode-gen" onclick="switchMode('gen')" class="text-xs font-bold uppercase tracking-wider px-3 py-1 bg-slate-200 rounded text-slate-500">Generador de perfiles</button>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="flex flex-wrap items-center gap-4 mt-4 md:mt-0">
+                <div class="flex bg-white rounded-lg p-1 shadow-sm border border-slate-200">
+                    <button id="lang-es" onclick="setLang('es')" class="px-3 py-1.5 text-[10px] font-bold rounded-md transition-colors toggle-active">ESP</button>
+                    <button id="lang-en" onclick="setLang('en')" class="px-3 py-1.5 text-[10px] font-bold rounded-md transition-colors">ENG</button>
+                </div>
+                <div class="flex bg-white rounded-lg p-1 shadow-sm border border-slate-200">
+                    <button id="unit-mm" onclick="setUnit('mm')" class="px-3 py-1.5 text-[10px] font-bold rounded-md transition-colors toggle-active">MM</button>
+                    <button id="unit-cm" onclick="setUnit('cm')" class="px-3 py-1.5 text-[10px] font-bold rounded-md transition-colors">CM</button>
+                </div>
+            </div>
+        </header>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+            
+            <!-- LEFT COLUMN: CONTROLS -->
+            <div class="lg:col-span-4 space-y-6">
+                
+                <!-- MODE: CALCULATOR (Inputs manuales) -->
+                <div id="panel-calc" class="result-card">
+                    <div class="flex justify-between items-center mb-4 border-b pb-2">
+                        <h2 id="ui-geom-title" class="font-bold text-indigo-600 text-xs uppercase tracking-widest">Geometría Manual</h2>
+                        <label class="flex items-center gap-2 cursor-pointer">
+                            <input type="checkbox" id="double-web" onchange="toggleWebs()" class="w-4 h-4 accent-indigo-600">
+                            <span id="ui-double-web" class="text-[9px] font-bold text-slate-500 uppercase">Doble Alma</span>
+                        </label>
+                    </div>
+
+                    <div class="input-group">
+                        <label id="ui-label-bs">Ala Superior (b<sub>s</sub> x t<sub>s</sub>)</label>
+                        <div class="flex gap-2"><input type="number" id="bs" value="200" min="0" step="any" oninput="manualCalculate()"><input type="number" id="ts" value="15" min="0" step="any" oninput="manualCalculate()"></div>
+                    </div>
+                    <div class="input-group">
+                        <label id="ui-label-hw">Alma (h<sub>w</sub> x t<sub>w</sub>)</label>
+                        <div class="flex gap-2"><input type="number" id="hw" value="400" min="0" step="any" oninput="manualCalculate()"><input type="number" id="tw" value="10" min="0" step="any" oninput="manualCalculate()"></div>
+                    </div>
+                    <div id="sw-container" class="input-group hidden-field">
+                        <label id="ui-label-sw">Separación respecto eje y (e<sub>z</sub>)</label>
+                        <input type="number" id="sw" value="50" min="0" step="any" oninput="manualCalculate()">
+                    </div>
+                    <div class="input-group">
+                        <label id="ui-label-bi">Ala Inferior (b<sub>i</sub> x t<sub>i</sub>)</label>
+                        <div class="flex gap-2"><input type="number" id="bi" value="200" min="0" step="any" oninput="manualCalculate()"><input type="number" id="ti" value="15" min="0" step="any" oninput="manualCalculate()"></div>
+                    </div>
+                </div>
+
+                <!-- MODE: GENERATOR (Rangos) -->
+                <div id="panel-gen" class="result-card hidden-field">
+                    <h2 id="ui-gen-title" class="font-bold mb-4 text-indigo-600 text-xs uppercase tracking-widest border-b pb-2">Generador de Secciones</h2>
+                    
+                    <div class="input-group">
+                        <label id="ui-label-type">Tipo de Perfil</label>
+                        <select id="gen-type" onchange="updateGenUI()">
+                            <option value="I">Doble T (I)</option>
+                            <option value="T">T Simple</option>
+                            <option value="Box">Cajón / Box</option>
+                        </select>
+                    </div>
+
+                    <div class="input-group flex items-center gap-2 mb-2 bg-indigo-50 p-2 rounded border border-indigo-100">
+                        <input type="checkbox" id="gen-sym" checked class="w-4 h-4 accent-indigo-600" onchange="updateGenUI()">
+                        <label id="ui-label-sym" for="gen-sym" class="mt-0 cursor-pointer text-indigo-900">Simétrico respecto eje Z</label>
+                    </div>
+
+                    <div class="input-group flex items-center gap-2 mb-4 bg-emerald-50 p-2 rounded border border-emerald-100">
+                        <span id="ui-label-int" class="text-[10px] text-emerald-800 font-bold uppercase tracking-wider">(Solo perfiles con valores enteros)</span>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="input-group">
+                            <label id="ui-label-h">Altura Total (h)</label>
+                            <div class="flex gap-1 items-center">
+                                <input type="number" id="gen-h-min" value="100" min="0" step="10">
+                                <span class="text-xs">-</span>
+                                <input type="number" id="gen-h-max" value="400" min="0" step="10">
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <label id="ui-label-b">Ancho Alas (b)</label>
+                            <div class="flex gap-1 items-center">
+                                <input type="number" id="gen-b-min" value="100" min="0" step="10">
+                                <span class="text-xs">-</span>
+                                <input type="number" id="gen-b-max" value="300" min="0" step="10">
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="input-group">
+                            <label id="ui-label-tw">Espesor Alma (t<sub>w</sub>)</label>
+                            <div class="flex gap-1 items-center">
+                                <input type="number" id="gen-tw-min" value="10" min="0" step="10">
+                                <span class="text-xs">-</span>
+                                <input type="number" id="gen-tw-max" value="20" min="0" step="10">
+                            </div>
+                        </div>
+                        <div class="input-group">
+                            <label id="ui-label-tf">Espesor Alas (t<sub>f</sub>)</label>
+                            <div class="flex gap-1 items-center">
+                                <input type="number" id="gen-tf-min" value="10" min="0" step="10">
+                                <span class="text-xs">-</span>
+                                <input type="number" id="gen-tf-max" value="20" min="0" step="10">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <button id="ui-btn-gen" onclick="runGenerator()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg transition text-xs uppercase tracking-wider mt-2 shadow-md hover:shadow-lg">
+                        Generar Tabla
+                    </button>
+                    <p id="ui-warn-gen" class="text-[10px] text-slate-400 mt-2 text-center">*Asimetría multiplica el tiempo de cálculo</p>
+                </div>
+
+                <!-- QUICK RESULTS (Shared) -->
+                <div class="bg-slate-900 text-white p-6 rounded-xl shadow-xl">
+                    <h2 id="ui-summary-title" class="font-bold mb-4 text-slate-400 text-[10px] uppercase tracking-[0.2em]">Resumen (Selección)</h2>
+                    <div id="quick-results" class="space-y-4 text-sm font-mono"></div>
+                </div>
+            </div>
+
+            <!-- RIGHT COLUMN: VISUALIZATION & DATA -->
+            <div class="lg:col-span-8 space-y-6">
+                
+                <!-- VISUALIZATION -->
+                <div class="result-card flex flex-col items-center">
+                    <div class="w-full flex justify-between items-center mb-4">
+                        <span id="ui-schema-label" class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Esquema Dinámico</span>
+                        <span class="px-2 py-1 bg-red-50 text-red-600 text-[10px] font-bold rounded">z-z Axis</span>
+                    </div>
+                    <div id="svg-container" class="w-full bg-slate-50 rounded-lg overflow-hidden flex justify-center border border-slate-100 p-4">
+                        <svg id="profile-svg" width="500" height="400" viewBox="0 0 500 400"></svg>
+                    </div>
+                </div>
+
+                <!-- TABLE OUTPUT (For Generator Mode) -->
+                <div id="output-gen" class="hidden-field result-card">
+                    <h2 class="font-bold mb-4 text-slate-800 text-xs uppercase tracking-wider">
+                        <span id="ui-res-gen-title">Resultados Generados</span> 
+                        <span id="gen-count" class="text-slate-400 font-normal ml-2"></span>
+                    </h2>
+                    <div class="gen-table-container border rounded-lg">
+                        <table class="w-full text-left text-[11px] border-collapse gen-table">
+                            <thead class="bg-slate-50 text-slate-500 uppercase font-bold">
+                                <tr>
+                                    <th class="p-3 border-b" id="th-gen-profile">Perfil</th>
+                                    <th class="p-3 border-b" id="th-gen-geo">Geometría</th>
+                                    <th class="p-3 border-b" id="th-gen-area">Área</th>
+                                    <th class="p-3 border-b" id="th-gen-yg">y<sub>g</sub></th>
+                                    <th class="p-3 border-b" id="th-gen-iz">I<sub>z</sub></th>
+                                    <th class="p-3 border-b" id="th-gen-sz">S<sub>z,max</sub></th>
+                                </tr>
+                            </thead>
+                            <tbody id="gen-table-body" class="font-mono text-slate-700">
+                                <tr><td colspan="6" class="p-4 text-center text-slate-400">...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- DETAILED CALC (For Calculator Mode) -->
+                <div id="output-calc" class="result-card">
+                    <h2 id="ui-calc-title" class="font-bold mb-6 text-slate-800 text-xs uppercase tracking-wider">Memoria Técnica</h2>
+                    <div class="overflow-x-auto mb-6">
+                        <table class="w-full text-left text-[11px] border-collapse">
+                            <thead class="bg-slate-50 text-slate-500 uppercase">
+                                <tr>
+                                    <th class="p-3 border" id="th-part">Parte</th>
+                                    <th class="p-3 border" id="th-area">Área (A)</th>
+                                    <th class="p-3 border" id="th-yi">y<sub>i</sub></th>
+                                    <th class="p-3 border" id="th-di">d<sub>i</sub> (z-z)</th>
+                                    <th class="p-3 border" id="th-io">I<sub>o,i</sub> (z-z)</th>
+                                </tr>
+                            </thead>
+                            <tbody id="calc-body" class="font-mono text-slate-700"></tbody>
+                        </table>
+                    </div>
+                    
+                    <div id="math-details">
+                        <!-- Content injected by JS -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentLang = 'es';
+        let currentUnit = 'mm';
+        let appMode = 'calc'; // 'calc' or 'gen'
+
+        const i18n = {
+            es: {
+                title: "Calculadora de Perfiles",
+                modeCalc: "Calculadora",
+                modeGen: "Generador de perfiles",
+                doubleWeb: "Doble Alma",
+                geom: "Geometría Manual",
+                labelBs: "Ala Superior (b<sub>s</sub> x t<sub>s</sub>)",
+                labelHw: "Alma (h<sub>w</sub> x t<sub>w</sub>)",
+                labelSw: "Separación respecto eje y (e<sub>z</sub>)",
+                labelBi: "Ala Inferior (b<sub>i</sub> x t<sub>i</sub>)",
+                genTitle: "Generador de Secciones",
+                labelType: "Tipo de Perfil",
+                labelSym: "Simétrico respecto eje Z",
+                labelIntOnly: "(Solo perfiles con valores enteros)",
+                labelH: "Altura Total (h)",
+                labelB: "Ancho Alas (b)",
+                labelTw: "Espesor Alma (t<sub>w</sub>)",
+                labelTf: "Espesor Alas (t<sub>f</sub>)",
+                btnGenerate: "Generar Tabla",
+                warnAsym: "*Asimetría multiplica el tiempo de cálculo",
+                resGenTitle: "Resultados Generados",
+                summary: "Resumen (Selección)",
+                schema: "Esquema Dinámico",
+                calc: "Memoria Técnica",
+                thPart: "Parte",
+                thProfile: "Perfil",
+                thGeo: "Geometría",
+                thArea: "Área",
+                thYi: "yᵢ",
+                thDi: "dᵢ (z-z)",
+                thIo: "I<sub>o,i</sub> (z-z)",
+                thIz: "I<sub>z</sub>",
+                thSz: "S<sub>z,max</sub>",
+                inf: "Ala Inf.",
+                web: "Alma",
+                webs: "Almas (x2)",
+                sup: "Ala Sup.",
+                partWebPart: "Alma (parcial)",
+                step1: "1. Posición del Eje Neutro (y<sub>g</sub>)",
+                step2: "2. Inercia respecto al eje z (I<sub>z</sub>)",
+                step3: "3. Momento Estático de media sección (S<sub>z,max</sub>)",
+                step3note: "(Área sobre el eje neutro)",
+                msgNoRes: "No se encontraron perfiles válidos. Prueba con rangos más amplios o cambia las unidades.",
+                msgInit: "Define rangos y pulsa 'Generar Tabla'",
+                msgUnitChange: "Unidades cambiadas. Regenera la tabla.",
+                msgLimit: "Se ha alcanzado el límite de seguridad de iteraciones. Reduce los rangos o aumenta el salto entre dimensiones."
+            },
+            en: {
+                title: "Profile Calculator",
+                modeCalc: "Calculator",
+                modeGen: "Cross-section generator",
+                doubleWeb: "Double Web",
+                geom: "Manual Geometry",
+                labelBs: "Top Flange (b<sub>s</sub> x t<sub>s</sub>)",
+                labelHw: "Web (h<sub>w</sub> x t<sub>w</sub>)",
+                labelSw: "Distance from y-axis (e<sub>z</sub>)",
+                labelBi: "Bottom Flange (b<sub>i</sub> x t<sub>i</sub>)",
+                genTitle: "Section Generator",
+                labelType: "Profile Type",
+                labelSym: "Symmetric about Z axis",
+                labelIntOnly: "(Only profiles with integer values)",
+                labelH: "Total Height (h)",
+                labelB: "Flange Width (b)",
+                labelTw: "Web Thickness (t<sub>w</sub>)",
+                labelTf: "Flange Thickness (t<sub>f</sub>)",
+                btnGenerate: "Generate Table",
+                warnAsym: "*Asymmetry multiplies calculation time",
+                resGenTitle: "Generated Results",
+                summary: "Summary (Selection)",
+                schema: "Cross-section shape",
+                calc: "Technical Report",
+                thPart: "Part",
+                thProfile: "Profile",
+                thGeo: "Geometry",
+                thArea: "Area",
+                thYi: "yᵢ",
+                thDi: "dᵢ (z-z)",
+                thIo: "I<sub>o,i</sub> (z-z)",
+                thIz: "I<sub>z</sub>",
+                thSz: "S<sub>z,max</sub>",
+                inf: "Bot. Flange",
+                web: "Web",
+                webs: "Webs (x2)",
+                sup: "Top Flange",
+                partWebPart: "Web (partial)",
+                step1: "1. Neutral Axis Position (y<sub>g</sub>)",
+                step2: "2. Moment of Inertia about z-axis (I<sub>z</sub>)",
+                step3: "3. First moment of area of half section (S<sub>z,max</sub>)",
+                step3note: "(Area above neutral axis)",
+                msgNoRes: "No valid profiles found. Try wider ranges or change units.",
+                msgInit: "Define ranges and click 'Generate Table'",
+                msgUnitChange: "Units changed. Please regenerate the table.",
+                msgLimit: "Safety iteration limit reached. Reduce ranges or increase step size."
+            }
+        };
+
+        function switchMode(mode) {
+            appMode = mode;
+            document.getElementById('mode-calc').classList.toggle('toggle-active', mode === 'calc');
+            document.getElementById('mode-gen').classList.toggle('toggle-active', mode === 'gen');
+
+            document.getElementById('panel-calc').style.display = mode === 'calc' ? 'block' : 'none';
+            document.getElementById('panel-gen').style.display = mode === 'gen' ? 'block' : 'none';
+            document.getElementById('output-calc').style.display = mode === 'calc' ? 'block' : 'none';
+            document.getElementById('output-gen').style.display = mode === 'gen' ? 'block' : 'none';
+
+            if (mode === 'calc') manualCalculate();
+            updateGenUI();
+        }
+
+        function updateGenUI() {
+            const type = document.getElementById('gen-type').value;
+            const symCheck = document.getElementById('gen-sym');
+            
+            if (type === 'T') {
+                symCheck.checked = false;
+                symCheck.disabled = true;
+            } else {
+                symCheck.disabled = false;
+            }
+        }
+
+        function setLang(lang) {
+            currentLang = lang;
+            document.getElementById('lang-es').classList.toggle('toggle-active', lang === 'es');
+            document.getElementById('lang-en').classList.toggle('toggle-active', lang === 'en');
+            updateUIStrings();
+            if(appMode === 'calc') manualCalculate();
+            else {
+                // If in generator mode and table is populated, refresh headers
+                updateGenTableHeaders();
+            }
+        }
+
+        function toggleWebs() {
+            const isDouble = document.getElementById('double-web').checked;
+            document.getElementById('sw-container').style.display = isDouble ? 'block' : 'none';
+            manualCalculate();
+        }
+
+        function setUnit(unit) {
+            const oldUnit = currentUnit;
+            currentUnit = unit;
+            document.getElementById('unit-mm').classList.toggle('toggle-active', unit === 'mm');
+            document.getElementById('unit-cm').classList.toggle('toggle-active', unit === 'cm');
+            
+            const inputs = ['bs', 'ts', 'hw', 'tw', 'sw', 'bi', 'ti', 
+                           'gen-h-min', 'gen-h-max', 'gen-b-min', 'gen-b-max', 
+                           'gen-tw-min', 'gen-tw-max', 'gen-tf-min', 'gen-tf-max'];
+                           
+            inputs.forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                let val = parseFloat(el.value) || 0;
+                if (oldUnit === 'mm' && unit === 'cm') val /= 10;
+                if (oldUnit === 'cm' && unit === 'mm') val *= 10;
+                el.value = val % 1 === 0 ? val : val.toFixed(2);
+            });
+            
+            updateGenTableHeaders();
+            updateCalcTableHeaders();
+            updateUIStrings(); // Updates labels AND headers
+
+            if(appMode === 'calc') manualCalculate();
+            else document.getElementById('gen-table-body').innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-400">${i18n[currentLang].msgUnitChange}</td></tr>`;
+        }
+
+        function updateUIStrings() {
+            const t = i18n[currentLang];
+            const u = currentUnit;
+            
+            // Header
+            document.getElementById('ui-title').textContent = t.title;
+            document.getElementById('mode-calc').textContent = t.modeCalc;
+            document.getElementById('mode-gen').textContent = t.modeGen;
+            
+            // Calc Panel
+            document.getElementById('ui-geom-title').textContent = t.geom;
+            document.getElementById('ui-double-web').textContent = t.doubleWeb;
+            document.getElementById('ui-label-bs').innerHTML = `${t.labelBs} [${u}]`;
+            document.getElementById('ui-label-hw').innerHTML = `${t.labelHw} [${u}]`;
+            document.getElementById('ui-label-sw').innerHTML = `${t.labelSw} [${u}]`;
+            document.getElementById('ui-label-bi').innerHTML = `${t.labelBi} [${u}]`;
+            
+            // Gen Panel
+            document.getElementById('ui-gen-title').textContent = t.genTitle;
+            document.getElementById('ui-label-type').textContent = t.labelType;
+            document.getElementById('ui-label-sym').textContent = t.labelSym;
+            document.getElementById('ui-label-int').textContent = t.labelIntOnly;
+            document.getElementById('ui-label-h').textContent = t.labelH;
+            document.getElementById('ui-label-b').textContent = t.labelB;
+            document.getElementById('ui-label-tw').innerHTML = t.labelTw;
+            document.getElementById('ui-label-tf').innerHTML = t.labelTf;
+            document.getElementById('ui-btn-gen').textContent = t.btnGenerate;
+            document.getElementById('ui-warn-gen').textContent = t.warnAsym;
+            
+            // Outputs
+            document.getElementById('ui-summary-title').textContent = t.summary;
+            document.getElementById('ui-schema-label').textContent = t.schema;
+            document.getElementById('ui-res-gen-title').textContent = t.resGenTitle;
+            document.getElementById('ui-calc-title').textContent = t.calc;
+            
+            updateGenTableHeaders();
+            updateCalcTableHeaders();
+        }
+
+        function updateGenTableHeaders() {
+            const t = i18n[currentLang];
+            const u = currentUnit;
+            document.getElementById('th-gen-profile').textContent = t.thProfile;
+            document.getElementById('th-gen-geo').textContent = `${t.thGeo} (${u})`;
+            document.getElementById('th-gen-area').textContent = `${t.thArea} (${u}²)`;
+            document.getElementById('th-gen-yg').innerHTML = `${t.thYi} (${u})`;
+            document.getElementById('th-gen-iz').innerHTML = `${t.thIz} (${u}⁴)`;
+            document.getElementById('th-gen-sz').innerHTML = `${t.thSz} (${u}³)`;
+        }
+        
+        function updateCalcTableHeaders() {
+            const t = i18n[currentLang];
+            const u = currentUnit;
+            document.getElementById('th-part').textContent = t.thPart;
+            document.getElementById('th-area').textContent = `${t.thArea} (A) [${u}²]`;
+            document.getElementById('th-yi').innerHTML = `${t.thYi} [${u}]`;
+            document.getElementById('th-di').innerHTML = `${t.thDi} [${u}]`;
+            document.getElementById('th-io').innerHTML = `${t.thIo} [${u}⁴]`;
+        }
+
+        // --- CORE CALCULATION ENGINE ---
+
+        function computeProperties(bs, ts, hw, tw, sw, bi, ti, isDouble) {
+            const nWebs = isDouble ? 2 : 1;
+            const totalH = ti + hw + ts;
+            const parts = [];
+            
+            if (bi > 0 && ti > 0) {
+                parts.push({ 
+                    name: i18n[currentLang].inf, 
+                    b: bi, h: ti, y: ti / 2, 
+                    a: bi * ti, 
+                    ioz: (bi * Math.pow(ti, 3)) / 12, 
+                    ioy: (ti * Math.pow(bi, 3)) / 12,
+                    h: ti
+                });
+            }
+
+            parts.push({ 
+                name: isDouble ? i18n[currentLang].webs : i18n[currentLang].web, 
+                b: tw * nWebs, h: hw, y: ti + (hw / 2), 
+                a: tw * hw * nWebs, 
+                ioz: nWebs * (tw * Math.pow(hw, 3)) / 12, 
+                ioy: nWebs * (hw * Math.pow(tw, 3)) / 12,
+                h: hw
+            });
+
+            parts.push({ 
+                name: i18n[currentLang].sup, 
+                b: bs, h: ts, y: ti + hw + (ts / 2), 
+                a: bs * ts, 
+                ioz: (bs * Math.pow(ts, 3)) / 12, 
+                ioy: (ts * Math.pow(bs, 3)) / 12,
+                h: ts
+            });
+
+            const totalArea = parts.reduce((s, p) => s + p.a, 0);
+            const sumAy = parts.reduce((s, p) => s + (p.a * p.y), 0);
+            const yg = totalArea > 0 ? sumAy / totalArea : 0;
+
+            let totalIz = 0;
+            let totalIy = 0;
+
+            parts.forEach(p => {
+                const d = p.y - yg;
+                totalIz += p.ioz + (p.a * Math.pow(d, 2));
+
+                if (p.name === i18n[currentLang].webs && isDouble) {
+                    const aSingle = p.a / 2;
+                    const iSingle = p.ioy / 2; 
+                    totalIy += 2 * (iSingle + aSingle * Math.pow(sw, 2));
+                } else {
+                    totalIy += p.ioy;
+                }
+            });
+
+            let Szo = 0;
+            const y_top_rel = (ti + hw + ts/2) - yg;
+            if (y_top_rel > 0) Szo += (bs * ts) * y_top_rel;
+
+            const y_top_web = ti + hw;
+            if (y_top_web > yg) {
+                const h_web_eff = y_top_web - Math.max(yg, ti);
+                if (h_web_eff > 0) {
+                    const dist_centroid_web_part = h_web_eff/2 + (Math.max(yg, ti) - yg);
+                    Szo += (h_web_eff * tw * nWebs) * dist_centroid_web_part;
+                }
+            }
+            
+            return { parts, totalArea, yg, totalIz, totalIy, Szo, totalH };
+        }
+
+        // --- MANUAL MODE ---
+
+        function formatCalcNum(n) {
+            if (!n && n !== 0) return "0.00";
+            if (n === 0) return "0.00";
+            if (currentUnit === 'cm') {
+                return n.toFixed(2);
+            }
+            return n.toExponential(2);
+        }
+
+        function formatGenTableNum(n) {
+            if (!n && n !== 0) return "0";
+            if (n === 0) return "0";
+            if (currentUnit === 'cm') {
+                return n.toFixed(0);
+            }
+            return n.toExponential(2);
+        }
+
+        function renderExplainedCalculations(res) {
+            const u = currentUnit;
+            const t = i18n[currentLang];
+            const parts = res.parts;
+            const yg = res.yg;
+            const fmt = (n) => formatCalcNum(n);
+            
+            // 1. Yg Explanation
+            let ygNumStr = parts.map(p => `(${p.a.toFixed(1)} · ${p.y.toFixed(1)})`).join(' + ');
+            let ygDenStr = parts.map(p => p.a.toFixed(1)).join(' + ');
+            let ygCalc = `
+                <div class="mb-4">
+                    <h3 class="font-bold text-indigo-600 text-xs uppercase mb-2">${t.step1}</h3>
+                    <div class="font-mono text-xs text-slate-700 overflow-x-auto">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span>y<sub>g</sub> = </span>
+                            <div class="flex flex-col items-center text-center">
+                                <div class="border-b border-slate-400 pb-1 mb-1 whitespace-nowrap">Σ (A<sub>i</sub> · y<sub>i</sub>)</div>
+                                <div class="whitespace-nowrap">Σ A<sub>i</sub></div>
+                            </div>
+                            <span>=</span>
+                            <div class="flex flex-col items-center text-center">
+                                <div class="border-b border-slate-400 pb-1 mb-1 whitespace-nowrap">${ygNumStr}</div>
+                                <div class="whitespace-nowrap">${ygDenStr}</div>
+                            </div>
+                            <span>=</span>
+                            <strong class="text-indigo-700 text-sm ml-1">${fmt(yg)} ${u}</strong>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // 2. Iz Explanation
+            let izTerms = parts.map(p => {
+                let d = p.y - yg;
+                return `[${p.ioz.toFixed(0)} + ${p.a.toFixed(0)}·(${d.toFixed(1)})²]`;
+            }).join(' + <br>');
+            
+            let izCalc = `
+                <div class="mb-4 border-t border-slate-100 pt-4">
+                    <h3 class="font-bold text-indigo-600 text-xs uppercase mb-2">${t.step2}</h3>
+                    <div class="font-mono text-xs text-slate-700">
+                        <p class="mb-2">I<sub>z</sub> = Σ (I<sub>o,i</sub> + A<sub>i</sub> · d<sub>i</sub>²)</p>
+                        <div class="pl-4 border-l-2 border-indigo-100">
+                            ${izTerms}
+                            <div class="mt-2 text-indigo-700 font-bold">= ${fmt(res.totalIz)} ${u}⁴</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            // 3. Sz Explanation
+            let szExpl = [];
+            // Assuming parts structure: [Inf?, Web, Sup]
+            // We need to identify parts. The function computeProperties returns parts in order: Inf(opt), Web, Sup.
+            // Using logic: if part is Sup or Web partial.
+            
+            // Re-identify for clarity using names is risky if lang changed mid-calc? 
+            // Better to rely on positions. 
+            // Last element is Sup. Element before is Web.
+            const topPart = parts[parts.length-1]; 
+            const webPart = parts[parts.length-2]; 
+            
+            // Top Flange
+            let topDist = topPart.y - yg;
+            if(topDist > 0) {
+                szExpl.push(`${topPart.name}: ${topPart.a.toFixed(1)} · ${topDist.toFixed(1)}`);
+            }
+            
+            // Web part above NA
+            let webTopY = topPart.y - topPart.h/2;
+            if(webTopY > yg) {
+                let h_web_eff = webTopY - yg;
+                // nWebs is needed. Derived from area/h.
+                let nWebs = webPart.a / (webPart.h * (webPart.b / (webPart.a/webPart.h))); // Too complex. 
+                // Simple: area density.
+                let width = webPart.b; // This is total width (tw * nWebs)
+                let web_eff_area = h_web_eff * width;
+                let web_eff_dist = h_web_eff / 2;
+                szExpl.push(`${t.partWebPart}: ${web_eff_area.toFixed(1)} · ${web_eff_dist.toFixed(1)}`);
+            }
+            
+            let szStr = szExpl.join(' + ');
+            
+            let szCalc = `
+                <div class="mb-4 border-t border-slate-100 pt-4">
+                    <h3 class="font-bold text-indigo-600 text-xs uppercase mb-2">${t.step3}</h3>
+                    <div class="font-mono text-xs text-slate-700">
+                        <p class="mb-2">S<sub>z,max</sub> = Σ (A'<sub>i</sub> · y'<sub>i</sub>) <span class="text-slate-400 italic text-[10px]">${t.step3note}</span></p>
+                        <div class="pl-4 border-l-2 border-indigo-100">
+                            ${szStr || "0"}
+                            <div class="mt-2 text-indigo-700 font-bold">= ${fmt(res.Szo)} ${u}³</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('math-details').innerHTML = `<div class="bg-slate-50 p-4 rounded-lg border border-slate-200">${ygCalc}${izCalc}${szCalc}</div>`;
+        }
+
+        function manualCalculate() {
+            // Apply Math.max(0, ...) to ensure positive dimensions
+            const bs = Math.max(0, parseFloat(document.getElementById('bs').value) || 0);
+            const ts = Math.max(0, parseFloat(document.getElementById('ts').value) || 0);
+            const hw = Math.max(0, parseFloat(document.getElementById('hw').value) || 0);
+            const tw = Math.max(0, parseFloat(document.getElementById('tw').value) || 0);
+            const sw = Math.max(0, parseFloat(document.getElementById('sw').value) || 0);
+            const bi = Math.max(0, parseFloat(document.getElementById('bi').value) || 0);
+            const ti = Math.max(0, parseFloat(document.getElementById('ti').value) || 0);
+            const isDouble = document.getElementById('double-web').checked;
+
+            const res = computeProperties(bs, ts, hw, tw, sw, bi, ti, isDouble);
+
+            const tbody = document.getElementById('calc-body');
+            tbody.innerHTML = '';
+            // Display reversed array (Top to Bottom visually)
+            [...res.parts].reverse().forEach(p => {
+                const d = p.y - res.yg;
+                tbody.innerHTML += `
+                    <tr>
+                        <td class="p-3 border font-bold text-slate-500">${p.name}</td>
+                        <td class="p-3 border">${p.a.toFixed(2)}</td>
+                        <td class="p-3 border">${p.y.toFixed(2)}</td>
+                        <td class="p-3 border text-indigo-600 font-semibold">${d.toFixed(2)}</td>
+                        <td class="p-3 border">${formatCalcNum(p.ioz)}</td>
+                    </tr>
+                `;
+            });
+
+            document.getElementById('quick-results').innerHTML = `
+                <div class="flex justify-between"><span>${i18n[currentLang].thIz}:</span> <span class="text-indigo-400 font-bold">${formatCalcNum(res.totalIz)} ${currentUnit}⁴</span></div>
+                <div class="flex justify-between"><span>${i18n[currentLang].thSz}:</span> <span class="text-indigo-400 font-bold">${formatCalcNum(res.Szo)} ${currentUnit}³</span></div>
+                <div class="flex justify-between border-t border-slate-700 pt-2"><span>Y<sub>g</sub>:</span> <span class="text-emerald-400 font-bold">${res.yg.toFixed(2)} ${currentUnit}</span></div>
+            `;
+            
+            renderExplainedCalculations(res);
+            drawProfile(bs, ts, hw, tw, sw, bi, ti, res.yg, isDouble);
+        }
+
+        // --- GENERATOR MODE ---
+
+        function runGenerator() {
+            const t = i18n[currentLang];
+            const type = document.getElementById('gen-type').value;
+            const isSym = document.getElementById('gen-sym').checked;
+            const onlyInt = true; 
+            
+            // Apply Math.max(0, ...) to ensure positive ranges
+            const minH = Math.max(0, parseFloat(document.getElementById('gen-h-min').value));
+            const maxH = Math.max(0, parseFloat(document.getElementById('gen-h-max').value));
+            const minB = Math.max(0, parseFloat(document.getElementById('gen-b-min').value));
+            const maxB = Math.max(0, parseFloat(document.getElementById('gen-b-max').value));
+            const minTw = Math.max(0, parseFloat(document.getElementById('gen-tw-min').value));
+            const maxTw = Math.max(0, parseFloat(document.getElementById('gen-tw-max').value));
+            const minTf = Math.max(0, parseFloat(document.getElementById('gen-tf-min').value));
+            const maxTf = Math.max(0, parseFloat(document.getElementById('gen-tf-max').value));
+            
+            const step = currentUnit === 'mm' ? 10 : 1;
+            
+            const results = [];
+            let iters = 0;
+            const maxIters = 150000; 
+
+            for (let h = minH; h <= maxH; h += step) {
+                for (let tw = minTw; tw <= maxTw; tw += step) {
+                    
+                    for (let bs = minB; bs <= maxB; bs += step) {
+                        for (let ts = minTf; ts <= maxTf; ts += step) {
+                            
+                            let bottomFlangeOptions = [];
+                            
+                            if (isSym && type !== 'T') {
+                                bottomFlangeOptions.push({ bi: bs, ti: ts });
+                            } else if (type === 'T') {
+                                bottomFlangeOptions.push({ bi: 0, ti: 0 });
+                            } else {
+                                for (let ti = minTf; ti <= maxTf; ti += step) {
+                                    if (type === 'Box') {
+                                        bottomFlangeOptions.push({ bi: bs, ti: ti });
+                                    } else {
+                                        for (let bi = minB; bi <= maxB; bi += step) {
+                                            bottomFlangeOptions.push({ bi: bi, ti: ti });
+                                        }
+                                    }
+                                }
+                            }
+
+                            for (let opt of bottomFlangeOptions) {
+                                iters++;
+                                if (iters > maxIters) break;
+
+                                const { bi, ti } = opt;
+                                
+                                if (tw >= bs) continue; 
+                                if (type !== 'T' && tw >= bi) continue;
+                                if ((ts + ti) >= h) continue;
+
+                                let hw_curr = h - ts - ti;
+                                let sw_curr = 0;
+                                let isDouble = false;
+
+                                if (type === 'Box') {
+                                    isDouble = true;
+                                    sw_curr = (bs - tw) / 2; 
+                                } else if (type === 'I') {
+                                    isDouble = false;
+                                } else { 
+                                    isDouble = false;
+                                    hw_curr = h - ts; 
+                                }
+
+                                if (hw_curr <= 0) continue;
+
+                                const res = computeProperties(bs, ts, hw_curr, tw, sw_curr, bi, ti, isDouble);
+                                
+                                if (onlyInt) {
+                                    let u_area = 100, u_yg = 10, u_iz = 10000, u_sz = 1000;
+                                    if (currentUnit === 'cm') {
+                                         u_area = 1; u_yg = 1; u_iz = 1; u_sz = 1;
+                                    }
+
+                                    const isInt = (n) => Math.abs(n - Math.round(n)) < 0.0001;
+                                    
+                                    if (!isInt(res.totalArea / u_area)) continue;
+                                    if (!isInt(res.yg / u_yg)) continue;
+                                    if (!isInt(res.totalIz / u_iz)) continue;
+                                    if (!isInt(res.Szo / u_sz)) continue;
+                                }
+
+                                let label = `${type}-${h}`;
+                                let geo = "";
+                                if (isSym && type !== 'T') {
+                                    geo = `b${bs}·tw${tw}·tf${ts}`;
+                                } else {
+                                    if(type === 'T') geo = `b${bs}·tw${tw}·tf${ts}`;
+                                    else geo = `Top:${bs}x${ts} Bot:${bi}x${ti} Web:${tw}`;
+                                }
+
+                                results.push({
+                                    label: label,
+                                    geo: geo,
+                                    area: res.totalArea,
+                                    yg: res.yg,
+                                    iz: res.totalIz,
+                                    szo: res.Szo,
+                                    params: { bs, ts, hw: hw_curr, tw, sw: sw_curr, bi, ti, isDouble }
+                                });
+                            }
+                            if (iters > maxIters) break;
+                        }
+                        if (iters > maxIters) break;
+                    }
+                    if (iters > maxIters) break;
+                }
+                if (iters > maxIters) break;
+            }
+
+            if (iters > maxIters) alert(t.msgLimit);
+            renderGenTable(results);
+        }
+
+        function renderGenTable(data) {
+            const tbody = document.getElementById('gen-table-body');
+            document.getElementById('gen-count').innerText = `(${data.length})`;
+            tbody.innerHTML = '';
+            
+            if (data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="6" class="p-4 text-center">${i18n[currentLang].msgNoRes}</td></tr>`;
+                return;
+            }
+
+            const limit = data.length > 500 ? 500 : data.length;
+            
+            for(let i=0; i<limit; i++) {
+                const item = data[i];
+                const tr = document.createElement('tr');
+                tr.className = "border-b";
+
+                // Use formatGenTableNum for compactness in table
+                const areaStr = item.area.toFixed(0);
+                const ygStr = currentUnit === 'cm' ? item.yg.toFixed(0) : item.yg.toFixed(1);
+
+                tr.innerHTML = `
+                    <td class="p-3 font-bold text-indigo-700">${item.label}</td>
+                    <td class="p-3 text-[10px]">${item.geo}</td>
+                    <td class="p-3">${areaStr}</td>
+                    <td class="p-3">${ygStr}</td>
+                    <td class="p-3">${formatGenTableNum(item.iz)}</td>
+                    <td class="p-3 font-bold">${formatGenTableNum(item.szo)}</td>
+                `;
+                tr.onclick = () => {
+                    document.querySelectorAll('.gen-table tr').forEach(r => r.classList.remove('selected'));
+                    tr.classList.add('selected');
+                    
+                    const p = item.params;
+                    drawProfile(p.bs, p.ts, p.hw, p.tw, p.sw, p.bi, p.ti, item.yg, p.isDouble);
+                    
+                    const ygSummary = currentUnit === 'cm' ? item.yg.toFixed(0) : item.yg.toFixed(2);
+                    
+                    // Use formatCalcNum for detail view in summary
+                    document.getElementById('quick-results').innerHTML = `
+                         <div class="mb-2 text-xs text-slate-400 border-b pb-1">SELECCIÓN: ${item.label} (${item.geo})</div>
+                        <div class="flex justify-between"><span>${i18n[currentLang].thIz}:</span> <span class="text-indigo-400 font-bold">${formatCalcNum(item.iz)} ${currentUnit}⁴</span></div>
+                        <div class="flex justify-between"><span>${i18n[currentLang].thSz}:</span> <span class="text-indigo-400 font-bold">${formatCalcNum(item.szo)} ${currentUnit}³</span></div>
+                        <div class="flex justify-between border-t border-slate-700 pt-2"><span>Y<sub>g</sub>:</span> <span class="text-emerald-400 font-bold">${ygSummary} ${currentUnit}</span></div>
+                    `;
+                };
+                tbody.appendChild(tr);
+            }
+            
+            // Auto-select first row
+            if (tbody.firstChild) {
+                tbody.firstChild.click();
+            }
+        }
+
+        function drawProfile(bs, ts, hw, tw, sw, bi, ti, yg, isDouble) {
+            const svg = document.getElementById('profile-svg');
+            svg.innerHTML = '';
+            const margin = 50; const canvasW = 500; const canvasH = 400;
+            const totalH = ti + hw + ts; 
+            
+            const maxW = Math.max(bs, bi, isDouble ? (sw*2 + tw + bs/4) : tw); 
+            const scaleH = (canvasH - 2 * margin) / totalH;
+            const scaleW = (canvasW - 2 * margin) / maxW;
+            const scale = Math.min(scaleH, scaleW); 
+
+            const offsetX = canvasW / 2; 
+            const offsetY = (canvasH - (totalH * scale)) / 2 + (totalH * scale); 
+            
+            const sV = (v) => v * scale;
+
+            const drawR = (w, h, bY, color, xS = 0) => {
+                if (h <= 0 || w <= 0) return;
+                const rw = sV(w); const rh = sV(h);
+                const r = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+                r.setAttribute("x", offsetX - rw/2 + sV(xS)); r.setAttribute("y", offsetY - sV(bY) - rh);
+                r.setAttribute("width", rw); r.setAttribute("height", rh);
+                r.setAttribute("fill", color); r.setAttribute("stroke", "#1e293b");
+                svg.appendChild(r);
+            };
+
+            if (ti > 0) drawR(bi, ti, 0, "#cbd5e1");
+            drawR(bs, ts, ti + hw, "#94a3b8");
+            
+            if (isDouble) { 
+                drawR(tw, hw, ti, "#64748b", -sw); 
+                drawR(tw, hw, ti, "#64748b", sw); 
+            } else { 
+                drawR(tw, hw, ti, "#64748b"); 
+            }
+
+            // NA Line
+            const z_axis = offsetY - sV(yg);
+            const line = document.createElementNS("http://www.w3.org/2000/svg", "line");
+            line.setAttribute("x1", 20); line.setAttribute("y1", z_axis); line.setAttribute("x2", 440); line.setAttribute("y2", z_axis);
+            line.setAttribute("stroke", "#ef4444"); line.setAttribute("stroke-width", "2"); line.setAttribute("stroke-dasharray", "8,4");
+            svg.appendChild(line);
+
+            const z_label = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            z_label.setAttribute("x", 450); z_label.setAttribute("y", z_axis + 4); z_label.setAttribute("fill", "#ef4444"); z_label.setAttribute("font-size", "12"); z_label.setAttribute("font-weight", "bold");
+            z_label.textContent = "z"; svg.appendChild(z_label);
+
+            // --- COTAS Yg ---
+            const dimX = offsetX + sV(maxW/2) + 30; // Position to the right
+            const yBottom = offsetY;
+            const yTop = offsetY - sV(totalH);
+            const yNA = z_axis;
+
+            const drawDim = (y1, y2, x, text) => {
+                const grp = document.createElementNS("http://www.w3.org/2000/svg", "g");
+                // Line
+                const l = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                l.setAttribute("x1", x); l.setAttribute("y1", y1); l.setAttribute("x2", x); l.setAttribute("y2", y2);
+                l.setAttribute("stroke", "#3b82f6"); l.setAttribute("stroke-width", "1");
+                grp.appendChild(l);
+                // Ticks
+                const t1 = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                t1.setAttribute("x1", x-4); t1.setAttribute("y1", y1); t1.setAttribute("x2", x+4); t1.setAttribute("y2", y1);
+                t1.setAttribute("stroke", "#3b82f6"); grp.appendChild(t1);
+                const t2 = document.createElementNS("http://www.w3.org/2000/svg", "line");
+                t2.setAttribute("x1", x-4); t2.setAttribute("y1", y2); t2.setAttribute("x2", x+4); t2.setAttribute("y2", y2);
+                t2.setAttribute("stroke", "#3b82f6"); grp.appendChild(t2);
+                // Text
+                const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                txt.setAttribute("x", x + 8); txt.setAttribute("y", (y1+y2)/2 + 4); 
+                txt.setAttribute("fill", "#3b82f6"); txt.setAttribute("font-size", "11");
+                txt.textContent = text;
+                grp.appendChild(txt);
+                svg.appendChild(grp);
+            };
+
+            // Cota Inferior (Bottom to NA)
+            drawDim(yBottom, yNA, dimX, yg.toFixed(1));
+            // Cota Superior (NA to Top)
+            drawDim(yNA, yTop, dimX, (totalH - yg).toFixed(1));
+        }
+
+        window.onload = function() {
+            setLang('es');
+            updateGenUI();
+            // Init msg
+            document.getElementById('gen-table-body').innerHTML = `<tr><td colspan="6" class="p-4 text-center text-slate-400">${i18n['es'].msgInit}</td></tr>`;
+        };
+    </script>
+    <!-- Autor: Maribel Castilla Heredia - isabel.castillaheredia@ceu.es -->
+</body>
+</html>

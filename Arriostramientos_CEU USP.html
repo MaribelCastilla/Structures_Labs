@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulador de Arriostramientos - Estructuras</title>
+    <!-- Tailwind CSS para estilos rápidos -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        /* Transiciones suaves para las animaciones SVG */
+        svg line, svg circle, svg text, svg g, svg rect, svg path {
+            transition: all 0.3s ease-in-out;
+        }
+        input[type=range] {
+            accent-color: #0f172a;
+        }
+        /* Clase para el botón de idioma activo */
+        .lang-active {
+            background-color: #0f172a;
+            color: white;
+        }
+        .lang-inactive {
+            background-color: #e2e8f0;
+            color: #64748b;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 min-h-screen font-sans text-slate-800 flex flex-col items-center justify-center p-6">
+
+    <div class="bg-white p-8 rounded-xl shadow-lg w-full max-w-4xl border border-slate-200 relative pb-10">
+        
+        <!-- Header con Selector de Idioma -->
+        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 border-b border-slate-100 pb-4 gap-4">
+            <div>
+                <h1 id="title-main" class="text-2xl font-bold text-slate-900">Análisis Cruz de San Andrés</h1>
+                <p id="subtitle-main" class="text-slate-500">Simulador Interactivo de Comportamiento de Arriostramientos - Grado en Arquitectura USP CEU</p>
+            </div>
+            
+            <!-- Selector de Idioma -->
+            <div class="flex rounded-lg overflow-hidden border border-slate-200 shadow-sm">
+                <button id="btn-es" class="px-3 py-1 text-sm font-bold transition-colors lang-active">ES</button>
+                <button id="btn-en" class="px-3 py-1 text-sm font-bold transition-colors lang-inactive">EN</button>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+            
+            <!-- Left Column: Forces & Geometry -->
+            <div class="space-y-6">
+                <!-- Load Slider -->
+                <div class="space-y-3">
+                    <label id="label-load" class="block text-sm font-semibold text-slate-700">Carga Lateral (Viento/Sismo)</label>
+                    <div class="flex items-center gap-4">
+                        <i data-lucide="arrow-left" class="w-5 h-5 text-slate-400" id="icon-left"></i>
+                        <input type="range" id="loadInput" min="-100" max="100" value="0" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer">
+                        <i data-lucide="arrow-right" class="w-5 h-5 text-slate-400" id="icon-right"></i>
+                    </div>
+                    <div class="text-center font-mono text-sm text-slate-600" id="loadValue">
+                        Fuerza: 0 kN
+                    </div>
+                </div>
+
+                <!-- Span Slider -->
+                <div class="space-y-3">
+                    <label id="label-span" class="block text-sm font-semibold text-slate-700">Luz del Pórtico (Span)</label>
+                    <div class="flex items-center gap-4">
+                        <span id="text-narrow" class="text-xs font-mono text-slate-400">Estrecho</span>
+                        <input type="range" id="spanInput" min="150" max="450" value="300" class="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-slate-500">
+                        <span id="text-wide" class="text-xs font-mono text-slate-400">Ancho</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Column: Typology -->
+            <div class="space-y-4">
+                <label id="label-type" class="block text-sm font-semibold text-slate-700">Tipología Estructural</label>
+                <div class="flex gap-2 p-1 bg-slate-100 rounded-lg">
+                    <button id="btn-rigid" class="flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all bg-white shadow-sm text-slate-900">
+                        Perfiles Rígidos (HEB/Tubo)
+                    </button>
+                    <button id="btn-cable" class="flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all text-slate-500 hover:text-slate-700">
+                        Cable/Tensor (Solo Tracción)
+                    </button>
+                </div>
+                
+                <!-- Etiqueta de Estado Estático -->
+                <div id="status-container" class="mt-2 p-2 rounded text-center font-bold text-sm transition-colors bg-slate-200 text-slate-700 border border-slate-300">
+                    Estructura Hiperestática
+                </div>
+
+                <p class="text-xs text-slate-500 mt-1" id="type-note">
+                    Nota: Los perfiles rígidos tienen Inercia (I) significativa y resisten el pandeo.
+                </p>
+            </div>
+        </div>
+
+        <!-- Visualization Area -->
+        <div class="relative bg-white border border-slate-200 rounded-xl overflow-hidden h-96 flex items-center justify-center mb-6">
+            <!-- Aumentado viewBox height a 380 para dejar espacio abajo -->
+            <svg id="mainSvg" width="100%" height="100%" viewBox="0 0 420 380" class="overflow-visible">
+                <defs>
+                    <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                        <polygon points="0 0, 10 3.5, 0 7" fill="#0f172a" />
+                    </marker>
+                </defs>
+                
+                <!-- Ground -->
+                <line id="ground" x1="20" y1="280" x2="400" y2="280" stroke="#cbd5e1" strokeWidth="2" />
+                
+                <!-- Supports (Apoyos Articulados) -->
+                <g id="supports" fill="#cbd5e1" stroke="#64748b" stroke-width="2">
+                    <path id="support-left" d="" />
+                    <path id="support-right" d="" />
+                </g>
+                
+                <!-- Angle Marker -->
+                <g id="angle-marker">
+                    <path id="angle-arc" fill="none" stroke="#64748b" stroke-width="1.5" stroke-dasharray="4,2" />
+                    <text id="angle-text" font-size="11" fill="#64748b" font-family="monospace" text-anchor="middle"></text>
+                </g>
+
+                <!-- Frame -->
+                <g stroke-linecap="round" stroke-linejoin="round">
+                    <!-- Columns & Beam -->
+                    <line id="col-left" stroke="#334155" stroke-width="6" />
+                    <line id="col-right" stroke="#334155" stroke-width="6" />
+                    <line id="beam" stroke="#334155" stroke-width="6" />
+
+                    <!-- Diagonals -->
+                    <line id="diag-1" stroke-width="4" /> <!-- TL -> BR -->
+                    <line id="diag-2" stroke-width="4" /> <!-- BL -> TR -->
+
+                    <!-- Joints -->
+                    <circle id="joint-tl" r="6" fill="white" stroke="#334155" stroke-width="2" />
+                    <circle id="joint-tr" r="6" fill="white" stroke="#334155" stroke-width="2" />
+                    <circle id="joint-bl" r="6" fill="white" stroke="#334155" stroke-width="2" />
+                    <circle id="joint-br" r="6" fill="white" stroke="#334155" stroke-width="2" />
+                </g>
+
+                <!-- Force Arrow Group -->
+                <g id="force-group" style="display: none;">
+                    <line id="force-arrow" stroke="#0f172a" stroke-width="4" marker-end="url(#arrowhead)" />
+                    <text id="force-text" font-weight="bold" fill="#0f172a" text-anchor="middle" y="-15" style="font-family: sans-serif"></text>
+                </g>
+
+                <!-- Legend -->
+                <g id="legend-group">
+                    <rect width="250" height="40" fill="white" stroke="#e2e8f0" rx="20" x="0" y="0" />
+                    
+                    <!-- Grupo Tracción -->
+                    <g transform="translate(20, 20)">
+                        <line x1="0" y1="0" x2="20" y2="0" stroke="#3b82f6" strokeWidth="3" />
+                        <text id="legend-tension" x="28" y="4" fontSize="12" fill="#64748b" style="font-family: sans-serif; font-weight: 500;">Tracción</text>
+                    </g>
+                    
+                    <!-- Grupo Compresión -->
+                    <g transform="translate(130, 20)">
+                        <line x1="0" y1="0" x2="20" y2="0" stroke="#ef4444" strokeWidth="3" />
+                        <text id="legend-compression" x="28" y="4" fontSize="12" fill="#64748b" style="font-family: sans-serif; font-weight: 500;">Compresión</text>
+                    </g>
+                </g>
+            </svg>
+        </div>
+
+        <!-- Data Readout -->
+        <div class="grid grid-cols-2 gap-4">
+            <div id="card-d1" class="p-4 rounded-lg border-l-4 bg-slate-50 border-slate-300 transition-colors">
+                <h3 id="card-title-d1" class="font-bold text-slate-700">Diagonal A (↘)</h3>
+                <p class="text-sm text-slate-600 capitalize" id="state-d1">Estado: -</p>
+                <p class="text-sm font-mono mt-1" id="val-d1">Fuerza: 0 kN</p>
+            </div>
+            <div id="card-d2" class="p-4 rounded-lg border-l-4 bg-slate-50 border-slate-300 transition-colors">
+                <h3 id="card-title-d2" class="font-bold text-slate-700">Diagonal B (↗)</h3>
+                <p class="text-sm text-slate-600 capitalize" id="state-d2">Estado: -</p>
+                <p class="text-sm font-mono mt-1" id="val-d2">Fuerza: 0 kN</p>
+            </div>
+        </div>
+
+        <!-- Professor Note -->
+        <div class="mt-6 flex items-start gap-3 bg-amber-50 p-4 rounded-lg text-amber-900 text-sm">
+            <i data-lucide="info" class="shrink-0 w-5 h-5 mt-0.5"></i>
+            <div>
+                <strong id="prof-note-title">Nota del Profesor:</strong> <span id="prof-note-text">Cambia la luz (span) para ver cómo la geometría afecta a los axiles. A mayor luz = menor ángulo &alpha; = mayor axil para la misma carga lateral (N = H / cos &alpha;).</span>
+            </div>
+        </div>
+
+        <!-- Version Tag -->
+        <div class="absolute bottom-2 right-4 text-[10px] text-slate-400 font-mono">
+            v. 1.0 Dec 2025
+        </div>
+
+    </div>
+
+    <script>
+        // Inicializar Iconos
+        lucide.createIcons();
+
+        // Diccionario de Traducciones
+        const i18n = {
+            es: {
+                title: "Análisis Cruz de San Andrés",
+                subtitle: "Simulador Interactivo de Comportamiento de Arriostramientos - Grado en Arquitectura USP CEU",
+                labelLoad: "Carga Lateral (Viento/Sismo)",
+                labelSpan: "Luz del Pórtico (Span)",
+                labelType: "Tipología Estructural",
+                textNarrow: "Estrecho",
+                textWide: "Ancho",
+                btnRigid: "Perfiles Rígidos (HEB/Tubo)",
+                btnCable: "Cable/Tensor (Solo Tracción)",
+                noteRigid: "Nota: Los perfiles rígidos tienen Inercia (I) significativa y resisten el pandeo.",
+                noteCable: "Nota: Los cables pandean bajo compresión (N > Ncr), trabajando solo a tracción.",
+                legendTension: "Tracción",
+                legendCompression: "Compresión",
+                cardDiagA: "Diagonal A (↘)",
+                cardDiagB: "Diagonal B (↗)",
+                profNoteTitle: "Nota del Profesor:",
+                profNoteText: "Cambia la luz (span) para ver cómo la geometría afecta a los axiles. A mayor luz = menor ángulo α = mayor axil para la misma carga lateral (N = H / cos α).",
+                
+                // Status Labels
+                statusHyper: "Estructura Hiperestática",
+                statusIso: "Estructura Isostática",
+                valIndet: "Hiperestático",
+
+                // Dinámicos
+                stateNeutral: "Neutro",
+                stateTension: "Tracción",
+                stateCompression: "Compresión",
+                stateLabel: "Estado",
+                forceLabel: "Fuerza",
+                buckling: "Pandeo"
+            },
+            en: {
+                title: "X Bracing Analysis",
+                subtitle: "Interactive Bracing Behavior Simulator - Degree in Architecture USP CEU",
+                labelLoad: "Lateral Load (Wind/Seismic)",
+                labelSpan: "Frame Span",
+                labelType: "Structural Typology",
+                textNarrow: "Narrow",
+                textWide: "Wide",
+                btnRigid: "Rigid Profiles (HEB/Tube)",
+                btnCable: "Cable/Rod (Tension Only)",
+                noteRigid: "Note: Rigid profiles have significant Inertia (I) and resist buckling.",
+                noteCable: "Note: Cables/Rods buckle under compression (N > Ncr), resisting zero load.",
+                legendTension: "Tension",
+                legendCompression: "Compression",
+                cardDiagA: "Diagonal A (↘)",
+                cardDiagB: "Diagonal B (↗)",
+                profNoteTitle: "Professor's Note:",
+                profNoteText: "Change the span to see how geometry affects axial forces. Wider span = lower angle α = higher axial force for the same lateral load (N = H / cos α).",
+                
+                // Status Labels
+                statusHyper: "Statically Indeterminate Structure",
+                statusIso: "Statically Determinate Structure",
+                valIndet: "Indeterminate",
+
+                // Dynamics
+                stateNeutral: "Neutral",
+                stateTension: "Tension",
+                stateCompression: "Compression",
+                stateLabel: "State",
+                forceLabel: "Force",
+                buckling: "Buckling"
+            }
+        };
+
+        // Estado
+        let state = {
+            load: 0,
+            span: 300,
+            type: 'rigid', // 'rigid' or 'cable'
+            lang: 'es'     // 'es' or 'en'
+        };
+
+        // Constantes Geometría
+        const height = 200;
+        const padding = 60;
+        const groundY = 280;
+        // Altura total del viewBox para dejar espacio a la leyenda
+        const svgHeight = 360; 
+
+        // Referencias DOM
+        const els = {
+            svg: document.getElementById('mainSvg'),
+            ground: document.getElementById('ground'),
+            colL: document.getElementById('col-left'),
+            colR: document.getElementById('col-right'),
+            beam: document.getElementById('beam'),
+            diag1: document.getElementById('diag-1'),
+            diag2: document.getElementById('diag-2'),
+            joints: {
+                tl: document.getElementById('joint-tl'),
+                tr: document.getElementById('joint-tr'),
+                bl: document.getElementById('joint-bl'),
+                br: document.getElementById('joint-br'),
+            },
+            supports: {
+                left: document.getElementById('support-left'),
+                right: document.getElementById('support-right'),
+            },
+            angleMarker: {
+                arc: document.getElementById('angle-arc'),
+                text: document.getElementById('angle-text'),
+            },
+            forceGroup: document.getElementById('force-group'),
+            forceArrow: document.getElementById('force-arrow'),
+            forceText: document.getElementById('force-text'),
+            legendGroup: document.getElementById('legend-group'),
+            
+            // UI Inputs
+            loadInput: document.getElementById('loadInput'),
+            spanInput: document.getElementById('spanInput'),
+            loadValue: document.getElementById('loadValue'),
+            btnRigid: document.getElementById('btn-rigid'),
+            btnCable: document.getElementById('btn-cable'),
+            typeNote: document.getElementById('type-note'),
+            statusContainer: document.getElementById('status-container'),
+            
+            // Cards
+            cardD1: document.getElementById('card-d1'),
+            cardTitleD1: document.getElementById('card-title-d1'),
+            valD1: document.getElementById('val-d1'),
+            stateD1: document.getElementById('state-d1'),
+            cardD2: document.getElementById('card-d2'),
+            cardTitleD2: document.getElementById('card-title-d2'),
+            valD2: document.getElementById('val-d2'),
+            stateD2: document.getElementById('state-d2'),
+
+            // Text Labels for Translation
+            titleMain: document.getElementById('title-main'),
+            subtitleMain: document.getElementById('subtitle-main'),
+            labelLoad: document.getElementById('label-load'),
+            labelSpan: document.getElementById('label-span'),
+            labelType: document.getElementById('label-type'),
+            textNarrow: document.getElementById('text-narrow'),
+            textWide: document.getElementById('text-wide'),
+            legendTension: document.getElementById('legend-tension'),
+            legendCompression: document.getElementById('legend-compression'),
+            profNoteTitle: document.getElementById('prof-note-title'),
+            profNoteText: document.getElementById('prof-note-text'),
+
+            // Icons
+            iconLeft: document.getElementById('icon-left'),
+            iconRight: document.getElementById('icon-right'),
+            
+            // Lang Btns
+            btnEs: document.getElementById('btn-es'),
+            btnEn: document.getElementById('btn-en'),
+        };
+
+        // --- Gestión de Idioma ---
+
+        function setLanguage(lang) {
+            state.lang = lang;
+            const t = i18n[lang];
+
+            // Actualizar textos estáticos
+            els.titleMain.textContent = t.title;
+            els.subtitleMain.textContent = t.subtitle;
+            els.labelLoad.textContent = t.labelLoad;
+            els.labelSpan.textContent = t.labelSpan;
+            els.labelType.textContent = t.labelType;
+            els.textNarrow.textContent = t.textNarrow;
+            els.textWide.textContent = t.textWide;
+            els.btnRigid.textContent = t.btnRigid;
+            els.btnCable.textContent = t.btnCable;
+            els.legendTension.textContent = t.legendTension;
+            els.legendCompression.textContent = t.legendCompression;
+            els.cardTitleD1.textContent = t.cardDiagA;
+            els.cardTitleD2.textContent = t.cardDiagB;
+            els.profNoteTitle.textContent = t.profNoteTitle;
+            els.profNoteText.textContent = t.profNoteText;
+
+            // Actualizar nota de tipo
+            if (state.type === 'rigid') els.typeNote.textContent = t.noteRigid;
+            else els.typeNote.textContent = t.noteCable;
+
+            // Actualizar estilos botones idioma
+            if (lang === 'es') {
+                els.btnEs.className = "px-3 py-1 text-sm font-bold transition-colors lang-active";
+                els.btnEn.className = "px-3 py-1 text-sm font-bold transition-colors lang-inactive hover:bg-slate-200";
+            } else {
+                els.btnEs.className = "px-3 py-1 text-sm font-bold transition-colors lang-inactive hover:bg-slate-200";
+                els.btnEn.className = "px-3 py-1 text-sm font-bold transition-colors lang-active";
+            }
+
+            // Actualizar Estado Etiqueta y Botones
+            updateButtons();
+
+            // Refrescar cálculos para actualizar textos dinámicos
+            update();
+        }
+
+
+        // --- Actualización Principal ---
+
+        function update() {
+            const t = i18n[state.lang];
+
+            // 1. Cálculos Geométricos
+            const width = state.span;
+            const svgWidth = width + (padding * 2);
+            // Ajustamos el viewBox verticalmente
+            els.svg.setAttribute('viewBox', `0 0 ${svgWidth} ${svgHeight}`);
+            
+            // Nodos Base
+            const nodes = {
+                tl: { x: padding, y: padding },
+                tr: { x: padding + width, y: padding },
+                bl: { x: padding, y: padding + height },
+                br: { x: padding + width, y: padding + height },
+            };
+
+            // Deriva (Drift)
+            const drift = (state.load / 100) * 40;
+            const cur = {
+                tl: { x: nodes.tl.x + drift, y: nodes.tl.y },
+                tr: { x: nodes.tr.x + drift, y: nodes.tr.y },
+                bl: nodes.bl,
+                br: nodes.br,
+            };
+
+            // 2. Actualizar Elementos SVG
+            // Ground
+            els.ground.setAttribute('x2', svgWidth - 20);
+
+            // Columnas y Viga
+            setLine(els.colL, cur.tl, cur.bl);
+            setLine(els.colR, cur.tr, cur.br);
+            setLine(els.beam, cur.tl, cur.tr);
+
+            // Apoyos (Triángulos)
+            const suppL_path = `M ${cur.bl.x},${cur.bl.y} L ${cur.bl.x - 10},${groundY} L ${cur.bl.x + 10},${groundY} Z`;
+            els.supports.left.setAttribute('d', suppL_path);
+            const suppR_path = `M ${cur.br.x},${cur.br.y} L ${cur.br.x - 10},${groundY} L ${cur.br.x + 10},${groundY} Z`;
+            els.supports.right.setAttribute('d', suppR_path);
+
+            // Nodos (Círculos)
+            setCircle(els.joints.tl, cur.tl);
+            setCircle(els.joints.tr, cur.tr);
+            setCircle(els.joints.bl, cur.bl);
+            setCircle(els.joints.br, cur.br);
+
+            // --- Ángulo de la Diagonal ---
+            const angleRad = Math.atan(height / width);
+            const angleDeg = Math.round(angleRad * (180 / Math.PI));
+            
+            // Dibujar arco ángulo en BL
+            const r = 40;
+            // Coordenada final del arco (sobre la diagonal BL->TR)
+            // La diagonal sube, así que Y disminuye.
+            const endX = cur.bl.x + r * Math.cos(angleRad);
+            const endY = cur.bl.y - r * Math.sin(angleRad);
+            
+            // Path: Move to (bl.x+r, bl.y) -> Arc to (endX, endY)
+            // Sweep flag 0 para ir "hacia arriba" (antihorario visualmente en coords cartesianas, pero SVG Y invertida)
+            const arcPath = `M ${cur.bl.x + r},${cur.bl.y} A ${r},${r} 0 0,0 ${endX},${endY}`;
+            els.angleMarker.arc.setAttribute('d', arcPath);
+            
+            // Texto del ángulo
+            const textR = 55;
+            const textX = cur.bl.x + textR * Math.cos(angleRad / 2);
+            const textY = cur.bl.y - textR * Math.sin(angleRad / 2);
+            els.angleMarker.text.setAttribute('x', textX);
+            els.angleMarker.text.setAttribute('y', textY);
+            els.angleMarker.text.textContent = `α = ${angleDeg}°`;
+
+
+            // --- Posicionamiento de la Leyenda ---
+            const legendW = 250;
+            const legendX = (svgWidth - legendW) / 2;
+            const legendY = 300; 
+            els.legendGroup.setAttribute('transform', `translate(${legendX}, ${legendY})`);
+
+            // 3. Cálculos de Fuerza
+            const forceMag = Math.abs(state.load);
+            const axialForce = forceMag / Math.cos(angleRad);
+
+            // Diagonales lógica
+            // Diag 1 (TL -> BR)
+            const d1State = state.load > 0 ? 'compression' : (state.load < 0 ? 'tension' : 'neutral');
+            const d1Val = state.load === 0 ? 0 : axialForce;
+            
+            // Diag 2 (BL -> TR)
+            const d2State = state.load > 0 ? 'tension' : (state.load < 0 ? 'compression' : 'neutral');
+            const d2Val = state.load === 0 ? 0 : axialForce;
+
+            // Actualizar Líneas Diagonales
+            updateDiagonal(els.diag1, cur.tl, cur.br, d1State, d1Val);
+            updateDiagonal(els.diag2, cur.bl, cur.tr, d2State, d2Val);
+
+            // 4. Actualizar UI de Cargas (Flechas)
+            if (state.load !== 0) {
+                els.forceGroup.style.display = 'block';
+                const isRight = state.load > 0;
+                // Posicionar grupo
+                const xBase = isRight ? cur.tl.x - 60 : cur.tr.x + 10;
+                const yBase = cur.tl.y;
+                els.forceGroup.setAttribute('transform', `translate(${xBase}, ${yBase})`);
+                
+                // Dibujar flecha
+                if (isRight) {
+                    els.forceArrow.setAttribute('x1', 0); els.forceArrow.setAttribute('y1', 0);
+                    els.forceArrow.setAttribute('x2', 50); els.forceArrow.setAttribute('y2', 0);
+                    els.forceText.setAttribute('x', 25);
+                    els.forceText.textContent = `H = +${state.load}kN`;
+                } else {
+                    els.forceArrow.setAttribute('x1', 50); els.forceArrow.setAttribute('y1', 0);
+                    els.forceArrow.setAttribute('x2', 0); els.forceArrow.setAttribute('y2', 0);
+                    els.forceText.setAttribute('x', 25);
+                    els.forceText.textContent = `H = ${state.load}kN`;
+                }
+            } else {
+                els.forceGroup.style.display = 'none';
+            }
+
+            // 5. Actualizar Textos y Paneles
+            els.loadValue.textContent = state.load === 0 ? `${t.forceLabel}: 0` : `${t.forceLabel}: ${state.load > 0 ? '+' : ''}${state.load} kN`;
+            
+            // Iconos flechas color
+            els.iconLeft.style.color = state.load < 0 ? '#0f172a' : '#cbd5e1';
+            els.iconRight.style.color = state.load > 0 ? '#0f172a' : '#cbd5e1';
+
+            // Cards Data
+            updateCard(els.cardD1, els.stateD1, els.valD1, d1State, d1Val, t);
+            updateCard(els.cardD2, els.stateD2, els.valD2, d2State, d2Val, t);
+        }
+
+        // --- Helpers Visuales ---
+
+        function setLine(el, p1, p2) {
+            el.setAttribute('x1', p1.x); el.setAttribute('y1', p1.y);
+            el.setAttribute('x2', p2.x); el.setAttribute('y2', p2.y);
+        }
+
+        function setCircle(el, p) {
+            el.setAttribute('cx', p.x); el.setAttribute('cy', p.y);
+        }
+
+        function updateDiagonal(el, p1, p2, fState, val) {
+            setLine(el, p1, p2);
+            
+            // Color
+            let color = '#94a3b8'; // neutral
+            if (fState === 'tension') color = '#3b82f6';
+            if (fState === 'compression') color = '#ef4444';
+            el.setAttribute('stroke', color);
+
+            // Ancho y Dash (Cable logic)
+            let width = 4;
+            let dash = '0';
+            let opacity = 1;
+
+            if (state.type === 'cable') {
+                if (fState === 'compression') {
+                    width = 1;
+                    dash = '5,5';
+                    opacity = 0.2; // Slack
+                } else {
+                    width = 4;
+                }
+            }
+
+            el.setAttribute('stroke-width', width);
+            el.setAttribute('stroke-dasharray', dash);
+            el.setAttribute('opacity', opacity);
+        }
+
+        function updateCard(card, txtState, txtVal, fState, val, t) {
+            // Reset clases
+            card.className = 'p-4 rounded-lg border-l-4 transition-colors';
+            
+            let colorClass = 'bg-slate-50 border-slate-300';
+            if (fState === 'tension') colorClass = 'bg-blue-50 border-blue-500';
+            if (fState === 'compression') colorClass = 'bg-red-50 border-red-500';
+            
+            card.classList.add(...colorClass.split(' '));
+
+            // Estado texto
+            let statusText = t.stateNeutral;
+            if (fState === 'tension') statusText = t.stateTension;
+            if (fState === 'compression') statusText = t.stateCompression;
+            
+            txtState.textContent = `${t.stateLabel}: ${statusText}`;
+            
+            // Valor texto LOGICA NUEVA
+            let displayVal;
+
+            if (state.type === 'rigid') {
+                // Hiperestático: Ocultar valor numérico
+                displayVal = t.valIndet;
+            } else {
+                // Isostático (Cable)
+                if (fState === 'compression') {
+                     displayVal = `0 (${t.buckling})`;
+                } else {
+                    displayVal = `${Math.round(val)} kN`;
+                }
+            }
+            
+            txtVal.textContent = `${t.forceLabel}: ${displayVal}`;
+        }
+
+        // --- Event Listeners ---
+
+        els.loadInput.addEventListener('input', (e) => {
+            state.load = parseInt(e.target.value);
+            update();
+        });
+
+        els.spanInput.addEventListener('input', (e) => {
+            state.span = parseInt(e.target.value);
+            update();
+        });
+
+        els.btnRigid.addEventListener('click', () => {
+            state.type = 'rigid';
+            updateButtons();
+            update();
+        });
+
+        els.btnCable.addEventListener('click', () => {
+            state.type = 'cable';
+            updateButtons();
+            update();
+        });
+
+        // Botones Idioma
+        els.btnEs.addEventListener('click', () => setLanguage('es'));
+        els.btnEn.addEventListener('click', () => setLanguage('en'));
+
+        function updateButtons() {
+            const activeClass = "bg-white shadow-sm text-slate-900";
+            const inactiveClass = "text-slate-500 hover:text-slate-700 bg-transparent shadow-none";
+            const t = i18n[state.lang];
+            
+            if (state.type === 'rigid') {
+                els.btnRigid.className = `flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${activeClass}`;
+                els.btnCable.className = `flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${inactiveClass}`;
+                els.typeNote.textContent = t.noteRigid;
+                
+                // Etiqueta Hiperestática
+                els.statusContainer.textContent = t.statusHyper;
+                els.statusContainer.className = "mt-2 p-2 rounded text-center font-bold text-sm transition-colors bg-slate-200 text-slate-700 border border-slate-300";
+            } else {
+                els.btnRigid.className = `flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${inactiveClass}`;
+                els.btnCable.className = `flex-1 py-2 px-4 rounded-md text-sm font-medium transition-all ${activeClass}`;
+                els.typeNote.textContent = t.noteCable;
+
+                // Etiqueta Isostática
+                els.statusContainer.textContent = t.statusIso;
+                els.statusContainer.className = "mt-2 p-2 rounded text-center font-bold text-sm transition-colors bg-emerald-100 text-emerald-800 border border-emerald-300";
+            }
+        }
+
+        // Run init
+        setLanguage('es');
+
+    </script>
+    
+</body>
+<!-- Contact: Maribel Castilla isabel.castillaheredia@ceu.es -->
+</html>

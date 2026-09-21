@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laboratorio de Estructuras</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <script crossorigin src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
+    
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        /* CORRECCIÓN CRÍTICA PARA BLACKBOARD */
+        html, body {
+            margin: 0;
+            padding: 0;
+            background-color: #f9fafb;
+            /* Permitimos el scroll por si el iframe es pequeño */
+            overflow: auto !important; 
+            height: auto !important;
+        }
+        #root {
+            /* Forzamos una altura mínima explícita en píxeles */
+            min-height: 800px; 
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        // --- CONSTANTES ---
+        const SCALE_FORCE = 0.8;
+
+        // --- HELPERS ---
+        const fmtResult = (val) => `${(val || 0) >= 0 ? "+" : ""}${(val || 0).toFixed(1)}`;
+        const fmtComp = (val) => Math.abs(val || 0).toFixed(1);
+        const fmtInput = (val) => (val || 0).toFixed(0);
+
+        // --- ICONOS SVG ---
+        const Ruler = ({ size = 24, className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"/><path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/></svg>
+        );
+        const ArrowLeftRight = ({ size = 24, className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>
+        );
+        const Square = ({ size = 24, className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="18" height="18" x="3" y="3" rx="2"/></svg>
+        );
+        const Calculator = ({ size = 24, className }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16" y1="14" y2="18"/><path d="M16 10h.01"/><path d="M12 10h.01"/><path d="M8 10h.01"/><path d="M12 14h.01"/><path d="M8 14h.01"/><path d="M12 18h.01"/><path d="M8 18h.01"/></svg>
+        );
+
+        // --- COMPONENTES AUXILIARES ---
+        const DimensionLine = ({ start, end, label, offset = 20, isVertical = false }) => {
+            if (!start || !end) return null;
+            let p1x = start.x, p1y = start.y, p2x = end.x, p2y = end.y;
+            let textX, textY;
+            if (isVertical) {
+                p1x += offset; p2x += offset;
+                textX = p1x + 15; textY = (p1y + p2y) / 2;
+            } else {
+                p1y += offset; p2y += offset;
+                textX = (p1x + p2x) / 2; textY = p1y + 15;
+            }
+            return (
+                <g>
+                    <line x1={start.x} y1={start.y} x2={p1x} y2={p1y} stroke="#94a3b8" strokeWidth="1" />
+                    <line x1={end.x} y1={end.y} x2={p2x} y2={p2y} stroke="#94a3b8" strokeWidth="1" />
+                    <line x1={p1x} y1={p1y} x2={p2x} y2={p2y} stroke="#64748b" strokeWidth="1" />
+                    <line x1={p1x-3} y1={p1y+(isVertical?3:-3)} x2={p1x+3} y2={p1y+(isVertical?-3:3)} stroke="#64748b" strokeWidth="1" />
+                    <line x1={p2x-3} y1={p2y+(isVertical?3:-3)} x2={p2x+3} y2={p2y+(isVertical?-3:3)} stroke="#64748b" strokeWidth="1" />
+                    <text x={textX} y={textY} className="text-xs font-mono fill-gray-600" textAnchor="middle" dominantBaseline="middle" transform={isVertical ? `rotate(-90, ${textX}, ${textY})` : ''}>{label} m</text>
+                </g>
+            );
+        };
+
+        const ReactionArrow = ({ type, value }) => {
+            if (Math.abs(value || 0) < 1) return null;
+            const length = Math.abs(value) * SCALE_FORCE;
+            const color = type === 'x' ? '#2563EB' : '#DC2626';
+            const originX = 180, originY = 320;
+            let startX, startY, endX, endY;
+
+            if (type === 'x') {
+                const baseX = originX - 2;
+                const baseY = originY;
+                if (value > 0) { endX = baseX; startX = baseX - length; } 
+                else { startX = baseX; endX = baseX - length; }
+                startY = endY = baseY;
+            } else {
+                const baseX = originX;
+                const baseY = originY + 2;
+                if (value > 0) { endY = baseY; startY = baseY + length; } 
+                else { startY = baseY; endY = baseY + length; }
+                startX = endX = baseX;
+            }
+            return (
+                <g>
+                    <line x1={startX} y1={startY} x2={endX} y2={endY} stroke={color} strokeWidth={3} />
+                    <path d={`M ${endX} ${endY} L ${endX - 8 * Math.cos(Math.atan2(endY - startY, endX - startX) - Math.PI / 6)} ${endY - 8 * Math.sin(Math.atan2(endY - startY, endX - startX) - Math.PI / 6)} L ${endX - 8 * Math.cos(Math.atan2(endY - startY, endX - startX) + Math.PI / 6)} ${endY - 8 * Math.sin(Math.atan2(endY - startY, endX - startX) + Math.PI / 6)} Z`} fill={color} />
+                    <text x={type === 'x' ? originX - 40 : originX + 15} y={type === 'x' ? originY - 10 : originY + 60} className="text-xs font-bold" fill={color}>R{type}={fmtInput(value)}</text>
+                </g>
+            );
+        };
+
+        const SliceArrow = ({ x, y, displayValue, angleR, color, isResponse = false, isComponent = false, offsetX = 0, offsetY = 0, showText = true }) => {
+            if (!Number.isFinite(displayValue) || Math.abs(displayValue) < 0.1) return null;
+
+            const len = Math.abs(displayValue) * SCALE_FORCE; 
+            const strokeW = isResponse ? 3 : (isComponent ? 1.5 : 2);
+            const dash = isComponent ? "3,1" : "none";
+
+            const ux = Math.cos(angleR);
+            const uy = -Math.sin(angleR); 
+            const vx = Math.cos(angleR + Math.PI/2);
+            const vy = -Math.sin(angleR + Math.PI/2);
+
+            const startBaseX = x + (offsetX || 0);
+            const startBaseY = y + (offsetY || 0); 
+
+            let startX, startY, endX, endY;
+            const physVal = -displayValue;
+            const dir = physVal >= 0 ? 1 : -1;
+
+            if (isResponse) {
+                const respDir = -dir;
+                if (respDir < 0) { 
+                    endX = startBaseX; endY = startBaseY;
+                    startX = endX - len * ux * respDir; 
+                    startY = endY - len * uy * respDir;
+                } else { 
+                    startX = startBaseX; startY = startBaseY;
+                    endX = startX + len * ux * respDir;
+                    endY = startY + len * uy * respDir;
+                }
+            } else {
+                if (physVal > 0) { 
+                    endX = startBaseX; endY = startBaseY;
+                    startX = endX - len * ux; 
+                    startY = endY - len * uy;
+                } else { 
+                    startX = startBaseX; startY = startBaseY;
+                    endX = startX - len * ux; 
+                    endY = startY - len * uy; 
+                }
+            }
+
+            const arrowAngle = Math.atan2(endY - startY, endX - startX);
+            if (isNaN(startX) || isNaN(startY) || isNaN(endX) || isNaN(endY)) return null;
+
+            let textX, textY;
+            if (isComponent) {
+                if (physVal > 0) { textX = startX; textY = startY; } 
+                else { textX = endX; textY = endY; }
+            }
+
+            return (
+                <g>
+                    <line x1={startX} y1={startY} x2={endX} y2={endY} stroke={color} strokeWidth={strokeW} strokeDasharray={dash} />
+                    <path d={`M ${endX} ${endY} L ${endX - (isComponent ? 4 : 6) * Math.cos(arrowAngle - Math.PI / 6)} ${endY - (isComponent ? 4 : 6) * Math.sin(arrowAngle - Math.PI / 6)} L ${endX - (isComponent ? 4 : 6) * Math.cos(arrowAngle + Math.PI / 6)} ${endY - (isComponent ? 4 : 6) * Math.sin(arrowAngle + Math.PI / 6)} Z`} fill={color} />
+                    {showText && isComponent && (
+                        <text x={textX} y={textY} dx={-5} dy={3} className="text-[9px] font-bold" fill={color} textAnchor="end">{fmtComp(displayValue)}</text>
+                    )}
+                </g>
+            )
+        };
+
+        // --- COMPONENTE PRINCIPAL ---
+        const GeometriaBarra = () => {
+            const [lang, setLang] = useState('es'); 
+            const [projX, setProjX] = useState(4.0);
+            const [projY, setProjY] = useState(3.0);
+            const [rx, setRx] = useState(50);
+            const [ry, setRy] = useState(80);
+            const [showProjections, setShowProjections] = useState(true);
+
+            // Textos
+            const t = {
+                es: {
+                    title: "Laboratorio de obtención de esfuerzos en barras inclinadas",
+                    geometry: "Geometría",
+                    horizontal: "Proy. Horizontal (Lx)",
+                    vertical: "Proy. Vertical (Ly)",
+                    reactions_label: "Valor de las reacciones en el apoyo",
+                    rx_label: "Rx (Horizontal)",
+                    ry_label: "Ry (Vertical)",
+                    analysis_title: "Análisis de la Rebanada",
+                    legend_left: "IZQ: Acción (Componentes)",
+                    legend_right: "DER: Reacción (Respuesta)",
+                    axial: "Axil",
+                    shear: "Cortante",
+                    compression: "Compresión",
+                    tension: "Tracción",
+                    legend_title: "LEYENDA",
+                    toggle_triangle: "Triángulo Auxiliar",
+                    version: "© 2026 Área de Mecánica de Sólidos y Medios Continuos. Escuela Politécnica Superior. Universidad CEU San Pablo. v.1.5 MAR 2026",
+                    logic_title: "Cálculo mediante triángulos semejantes",
+                    col_force: "Fuerza",
+                    col_comp: "Comp.",
+                    col_calc: "(F/Hip.) · Cateto", 
+                    col_value: "Valor"
+                },
+                en: {
+                    title: "Lab: Internal Forces in Slanted Bars",
+                    geometry: "Geometry",
+                    horizontal: "Run (Lx)",
+                    vertical: "Rise (Ly)",
+                    reactions_label: "Support Reaction Values",
+                    rx_label: "Rx (Horizontal)",
+                    ry_label: "Ry (Vertical)",
+                    analysis_title: "FBD of the Slice",
+                    legend_left: "L: Action (Components)",
+                    legend_right: "R: Reaction (Response)",
+                    axial: "Axial",
+                    shear: "Shear",
+                    compression: "Compression",
+                    tension: "Tension",
+                    legend_title: "LEGEND",
+                    toggle_triangle: "Slope Triangle",
+                    version: "© 2026 Área de Mecánica de Sólidos y Medios Continuos. Escuela Politécnica Superior. Universidad CEU San Pablo. v.1.5 MAR 2026",
+                    logic_title: "Calculation via Similar Triangles",
+                    col_force: "Force",
+                    col_comp: "Comp.",
+                    col_calc: "(F/Hyp) · Side",
+                    col_value: "Value"
+                }
+            };
+            const txt = t[lang];
+
+            const originX = 180, originY = 320; 
+            const maxDisplayPixels = 220;
+            const maxDim = Math.max(projX || 0, projY || 0) || 1;
+            const drawingScale = maxDisplayPixels / maxDim;
+
+            const pX = projX || 0;
+            const pY = projY || 0;
+            const hypotenuse = Math.sqrt(pX*pX + pY*pY);
+            const safeHyp = hypotenuse || 1; 
+            const angleRad = Math.atan2(pY, pX);
+            const angleDeg = (angleRad * 180) / Math.PI;
+            const cosTheta = pX / safeHyp;
+            const sinTheta = pY / safeHyp;
+
+            const n_phys_rx = (rx || 0) * cosTheta; 
+            const n_phys_ry = (ry || 0) * sinTheta;
+            const v_phys_rx = (rx || 0) * (-sinTheta);
+            const v_phys_ry = (ry || 0) * cosTheta;
+
+            const val_n_rx = -n_phys_rx;
+            const val_n_ry = -n_phys_ry;
+            const val_n_total = val_n_rx + val_n_ry;
+            const val_v_rx = -v_phys_rx;
+            const val_v_ry = -v_phys_ry;
+            const val_v_total = val_v_rx + val_v_ry;
+
+            return (
+                <div style={{display: 'flex', flexDirection: 'column', height: '100%', minHeight: '800px', width: '100%', backgroundColor: '#f9fafb', fontFamily: 'sans-serif', overflow: 'hidden'}}>
+                    
+                    {/* CABECERA ACTUALIZADA */}
+                    <header className="bg-white border-b border-gray-200 px-6 py-4 flex flex-col md:flex-row md:items-center justify-between shadow-sm z-10 shrink-0 gap-4">
+                        <div className="flex items-center gap-4 md:gap-6">
+                            <img src="https://www.uspceu.com/Portals/_default/skins/uspceu-multi//assets/img/logos/Logo-CEU-Positivo.svg" alt="Logotipo USP CEU" className="h-12 w-auto object-contain rounded-md shadow-sm" />
+                            <div>
+                                <h1 className="text-xl md:text-2xl font-black text-slate-900 tracking-tight hidden md:block">{txt.title}</h1>
+                                <h1 className="text-xl font-black text-slate-900 tracking-tight md:hidden">Lab Estructuras</h1>
+                            </div>
+                        </div>
+                        
+                        <div className="flex flex-wrap items-center gap-4">
+                            <div className="flex bg-slate-100 rounded-lg p-1 shadow-inner border border-slate-200">
+                                <button onClick={() => setLang('es')} className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-colors ${lang === 'es' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 hover:bg-slate-200'}`}>ESP</button>
+                                <button onClick={() => setLang('en')} className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-colors ${lang === 'en' ? 'bg-indigo-600 text-white shadow' : 'text-slate-500 hover:bg-slate-200'}`}>ENG</button>
+                            </div>
+                        </div>
+                    </header>
+
+                    <div style={{display: 'flex', flex: 1, overflow: 'hidden'}}>
+                        <aside className="w-96 bg-white border-r border-gray-200 p-6 overflow-y-auto flex flex-col gap-6 shadow-sm z-10 shrink-0">
+                            
+                            {/* GEOMETRÍA */}
+                            <div className="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                                <div className="flex items-center gap-2 mb-3 text-indigo-800">
+                                    <Ruler size={16}/>
+                                    <h3 className="font-bold text-sm">{txt.geometry}</h3>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4 mb-2">
+                                    <div>
+                                        <label className="block text-[10px] uppercase text-gray-500 font-bold mb-1">{txt.horizontal}</label>
+                                        <input type="number" value={projX} onChange={(e)=>setProjX(Number(e.target.value))} className="w-full text-sm p-1 border rounded" step="0.5"/>
+                                    </div>
+                                    <div>
+                                        <label className="block text-[10px] uppercase text-gray-500 font-bold mb-1">{txt.vertical}</label>
+                                        <input type="number" value={projY} onChange={(e)=>setProjY(Number(e.target.value))} className="w-full text-sm p-1 border rounded" step="0.5"/>
+                                    </div>
+                                </div>
+                                <div className="flex gap-2 text-[10px] text-gray-500 font-mono">
+                                    <span className="bg-white px-1 rounded border">θ = {angleDeg.toFixed(1)}°</span>
+                                    <span className="bg-white px-1 rounded border">sin = {sinTheta.toFixed(2)}</span>
+                                    <span className="bg-white px-1 rounded border">cos = {cosTheta.toFixed(2)}</span>
+                                </div>
+                            </div>
+
+                            {/* REACCIONES */}
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-2 mb-1 text-gray-800">
+                                    <ArrowLeftRight size={16}/>
+                                    <h3 className="font-bold text-sm">{txt.reactions_label}</h3>
+                                </div>
+                                <div>
+                                    <div className="flex justify-between text-xs mb-1">
+                                        <span className="font-medium text-blue-600">{txt.rx_label}</span>
+                                        <span className="font-mono font-bold text-blue-600">{fmtInput(rx)} kN</span>
+                                    </div>
+                                    <input type="range" min="-100" max="100" value={rx} onChange={(e) => setRx(Number(e.target.value))} className="w-full h-2 bg-blue-50 rounded-lg appearance-none cursor-pointer accent-blue-600" />
+                                </div>
+                                <div>
+                                    <div className="flex justify-between text-xs mb-1">
+                                        <span className="font-medium text-red-600">{txt.ry_label}</span>
+                                        <span className="font-mono font-bold text-red-600">{fmtInput(ry)} kN</span>
+                                    </div>
+                                    <input type="range" min="-100" max="100" value={ry} onChange={(e) => setRy(Number(e.target.value))} className="w-full h-2 bg-red-50 rounded-lg appearance-none cursor-pointer accent-red-600" />
+                                </div>
+                            </div>
+
+                            {/* FICHA DETALLADA */}
+                            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden flex-1 min-h-[380px] flex flex-col">
+                                <div className="bg-gray-50 px-4 py-2 border-b border-gray-100 flex justify-between items-center">
+                                    <h3 className="text-xs font-bold text-gray-700 uppercase tracking-wide">{txt.analysis_title}</h3>
+                                    <Square size={14} className="text-gray-400"/>
+                                </div>
+                                <div className="px-4 py-3 border-b border-gray-50 bg-yellow-50/50 space-y-1">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-xs font-bold text-green-700">{txt.axial}:</span>
+                                        <span className="text-xs font-mono text-gray-800">{fmtResult(val_n_total)} kN <span className="ml-1 italic text-gray-500">({val_n_total < 0 ? txt.compression : txt.tension})</span></span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-xs font-bold text-purple-700">{txt.shear}:</span>
+                                        <span className="text-xs font-mono text-gray-800">{fmtResult(val_v_total)} kN</span>
+                                    </div>
+                                </div>
+                                <div className="px-4 pt-2 text-[9px] flex justify-between text-gray-400 uppercase tracking-tighter">
+                                    <span>{txt.legend_left}</span>
+                                    <span>{txt.legend_right}</span>
+                                </div>
+                                {/* SVG MINIATURA */}
+                                <div className="relative flex-1 w-full min-h-[220px]">
+                                    <svg viewBox="0 0 240 220" className="w-full h-full absolute inset-0">
+                                        <g transform="translate(120, 110)">
+                                            <g transform={`rotate(${-angleDeg})`}>
+                                                <rect x="-40" y="-25" width="80" height="50" fill="#f8fafc" stroke="#334155" strokeWidth="1" rx="2" />
+                                                <line x1="-45" y1="0" x2="45" y2="0" stroke="#cbd5e1" strokeDasharray="3,2" />
+                                                <SliceArrow x={-40} y={0} displayValue={val_n_ry} angleR={0} color="#DC2626" isComponent={true} offsetX={-15} offsetY={0} />
+                                                <SliceArrow x={-40} y={0} displayValue={val_v_ry} angleR={Math.PI/2} color="#DC2626" isComponent={true} offsetX={0} offsetY={0} />
+                                                <SliceArrow x={-40} y={0} displayValue={val_v_rx} angleR={Math.PI/2} color="#2563EB" isComponent={true} offsetX={-5} offsetY={-5} />
+                                                <SliceArrow x={-40} y={0} displayValue={val_n_rx} angleR={0} color="#2563EB" isComponent={true} offsetX={-5} offsetY={-5} />
+                                                <SliceArrow x={40} y={0} displayValue={val_n_total} angleR={0} color="#16a34a" isResponse={true} />
+                                                <SliceArrow x={40} y={0} displayValue={val_v_total} angleR={Math.PI/2} color="#9333ea" isResponse={true} />
+                                            </g>
+                                        </g>
+                                    </svg>
+                                </div>
+                            </div>
+
+                            {/* TABLA CÁLCULO */}
+                            <div className="bg-orange-50 p-4 rounded-xl border border-orange-100 mt-4">
+                                <div className="flex items-center gap-2 mb-3 text-orange-800">
+                                    <Calculator size={16}/>
+                                    <h3 className="font-bold text-sm">{txt.logic_title}</h3>
+                                </div>
+                                <div className="overflow-x-auto">
+                                    <table className="w-full text-[10px] text-left border-collapse">
+                                        <thead>
+                                            <tr className="border-b border-orange-200 text-orange-700">
+                                                <th className="py-1">{txt.col_force}</th>
+                                                <th className="py-1">{txt.col_comp}</th>
+                                                <th className="py-1 text-center">{txt.col_calc}</th>
+                                                <th className="py-1 text-right">{txt.col_value}</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="text-gray-600 font-mono">
+                                            {/* Rx */}
+                                            <tr className="border-b border-orange-100/50">
+                                                <td className="py-1 font-bold text-blue-600 align-top" rowSpan="2">Rx: {Math.abs(rx).toFixed(0)} kN</td>
+                                                <td className="py-1">{txt.axial}</td>
+                                                <td className="py-1 text-center">{`(${Math.abs(rx).toFixed(0)}/${safeHyp.toFixed(1)}) · ${pX.toFixed(1)}`}</td>
+                                                <td className="py-1 text-right">{Math.abs(n_phys_rx).toFixed(1)}</td>
+                                            </tr>
+                                            <tr className="border-b border-orange-200">
+                                                <td className="py-1">{txt.shear}</td>
+                                                <td className="py-1 text-center">{`(${Math.abs(rx).toFixed(0)}/${safeHyp.toFixed(1)}) · ${pY.toFixed(1)}`}</td>
+                                                <td className="py-1 text-right">{Math.abs(v_phys_rx).toFixed(1)}</td>
+                                            </tr>
+                                            {/* Ry */}
+                                            <tr className="border-b border-orange-100/50">
+                                                <td className="py-1 font-bold text-red-600 align-top" rowSpan="2">Ry: {Math.abs(ry).toFixed(0)} kN</td>
+                                                <td className="py-1">{txt.axial}</td>
+                                                <td className="py-1 text-center">{`(${Math.abs(ry).toFixed(0)}/${safeHyp.toFixed(1)}) · ${pY.toFixed(1)}`}</td>
+                                                <td className="py-1 text-right">{Math.abs(n_phys_ry).toFixed(1)}</td>
+                                            </tr>
+                                            <tr>
+                                                <td className="py-1">{txt.shear}</td>
+                                                <td className="py-1 text-center">{`(${Math.abs(ry).toFixed(0)}/${safeHyp.toFixed(1)}) · ${pX.toFixed(1)}`}</td>
+                                                <td className="py-1 text-right">{Math.abs(v_phys_ry).toFixed(1)}</td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </aside>
+
+                        {/* PANEL DERECHO (CANVAS) */}
+                        <main className="flex-1 relative bg-white flex items-center justify-center p-4">
+                            <svg viewBox="0 0 500 500" className="w-full h-full max-w-3xl max-h-3xl">
+                                <defs>
+                                    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                                    <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#f8fafc" strokeWidth="1" />
+                                    </pattern>
+                                </defs>
+                                <rect width="100%" height="100%" fill="url(#grid)" />
+
+                                <g transform={`translate(${originX}, ${originY}) rotate(${-angleDeg})`}>
+                                    <rect x="0" y="-15" width="60" height="30" fill="#eff6ff" stroke="#93c5fd" strokeWidth="1" rx="1" opacity="0.9" />
+                                    <line x1="60" y1="-15" x2="60" y2="15" stroke="#3b82f6" strokeWidth="2" strokeDasharray="3,3" />
+                                </g>
+
+                                <path d={`M ${originX} ${originY} L ${originX - 12} ${originY + 18} L ${originX + 12} ${originY + 18} Z`} fill="#fff" stroke="#475569" strokeWidth="2"/>
+                                <line x1={originX - 20} y1={originY + 22} x2={originX + 20} y2={originY + 22} stroke="#94a3b8" strokeWidth="2" strokeLinecap="round" />
+                                <circle cx={originX} cy={originY} r="3.5" fill="#fff" stroke="#475569" strokeWidth="2" />
+
+                                <line x1={originX} y1={originY} x2={originX + pX * drawingScale} y2={originY - pY * drawingScale} stroke="#cbd5e1" strokeWidth="2" strokeDasharray="6,4"/>
+
+                                <g transform={`translate(${originX}, ${originY}) rotate(${-angleDeg})`}>
+                                    <SliceArrow x={0} y={0} displayValue={val_n_ry} angleR={0} color="#DC2626" isComponent={true} offsetX={-10} offsetY={0} showText={false} />
+                                    <SliceArrow x={0} y={0} displayValue={val_v_ry} angleR={Math.PI/2} color="#DC2626" isComponent={true} offsetX={0} offsetY={0} showText={false} />
+                                    <SliceArrow x={0} y={0} displayValue={val_v_rx} angleR={Math.PI/2} color="#2563EB" isComponent={true} offsetX={-5} offsetY={-5} showText={false} />
+                                    <SliceArrow x={0} y={0} displayValue={val_n_rx} angleR={0} color="#2563EB" isComponent={true} offsetX={-5} offsetY={-5} showText={false} />
+                                </g>
+
+                                <DimensionLine start={{x: originX, y: originY}} end={{x: originX + pX * drawingScale, y: originY}} label={pX} offset={30} />
+                                <DimensionLine start={{x: originX + pX * drawingScale, y: originY}} end={{x: originX + pX * drawingScale, y: originY - pY * drawingScale}} label={pY} offset={30} isVertical={true} />
+                                <ReactionArrow type="x" value={rx} />
+                                <ReactionArrow type="y" value={ry} />
+
+                                {(() => {
+                                    const cutX = originX + 60 * Math.cos(angleRad);
+                                    const cutY = originY - 60 * Math.sin(angleRad);
+                                    if (Math.abs(val_n_total) < 1 && Math.abs(val_v_total) < 1) return null;
+                                    return (
+                                        <g transform={`translate(${cutX}, ${cutY}) rotate(${-angleDeg})`}>
+                                            <SliceArrow x={0} y={0} displayValue={val_n_total} angleR={0} color="#16a34a" isResponse={true} />
+                                            <SliceArrow x={0} y={0} displayValue={val_v_total} angleR={Math.PI/2} color="#9333ea" isResponse={true} />
+                                            {Math.abs(val_n_total) > 1 && <text x={val_n_total < 0 ? 30 : 60} y={-10} className="text-xs font-bold fill-green-700" style={{ textShadow: '1px 1px 0 #fff' }}>N={fmtResult(val_n_total)}</text>}
+                                            {Math.abs(val_v_total) > 1 && <text x={30} y={val_v_total < 0 ? -40 : 40} className="text-xs font-bold fill-purple-700" style={{ textShadow: '1px 1px 0 #fff' }}>V={fmtResult(val_v_total)}</text>}
+                                        </g>
+                                    )
+                                })()}
+
+                                {showProjections && <path d={`M ${originX + pX * drawingScale} ${originY} L ${originX + pX * drawingScale} ${originY - pY * drawingScale}`} stroke="#94a3b8" strokeDasharray="4,4" strokeWidth="1" opacity="0.5" />}
+                            </svg>
+
+                            <div className="absolute bottom-4 right-4 bg-white/95 p-3 rounded-lg shadow-sm border border-gray-200 text-[10px] w-48">
+                                <div className="font-bold text-gray-500 mb-2 border-b pb-1 uppercase">{txt.legend_title}</div>
+                                <div className="grid grid-cols-2 gap-2 mb-2">
+                                    <div className="flex items-center gap-1"><div className="w-2 h-2 bg-blue-600 rounded-sm"></div>{txt.rx_label}</div>
+                                    <div className="flex items-center gap-1"><div className="w-2 h-2 bg-red-600 rounded-sm"></div>{txt.ry_label}</div>
+                                    <div className="flex items-center gap-1"><div className="w-2 h-2 bg-green-600 rounded-sm"></div>{txt.axial}</div>
+                                    <div className="flex items-center gap-1"><div className="w-2 h-2 bg-purple-600 rounded-sm"></div>{txt.shear}</div>
+                                </div>
+                                <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+                                    <label className="flex items-center gap-2 cursor-pointer select-none text-gray-600">
+                                        <input type="checkbox" checked={showProjections} onChange={() => setShowProjections(!showProjections)} className="rounded text-indigo-600"/>
+                                        {txt.toggle_triangle}
+                                    </label>
+                                </div>
+                            </div>
+                            <div className="absolute bottom-1 right-2 text-[9px] text-gray-300 font-mono">{txt.version}</div>
+                        </main>
+                    </div>
+                </div>
+            );
+        };
+
+        // RENDERIZADO REACT 17 (STANDARD)
+        ReactDOM.render(
+            <GeometriaBarra />,
+            document.getElementById('root')
+        );
+    
+   
+    </script>
+ 
+</body>
+</html>

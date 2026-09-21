@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Calculadora σ y Von Mises (base cm)</title>
+  <style>
+    :root{
+      /* Tema claro */
+      --bg: #f6f7fb;
+      --card: #ffffff;
+      --txt: #0f172a;
+      --muted: #475569;
+      --border: #e5e7eb;
+      --shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+
+      /* Acentos */
+      --accent: #1b2a5b;     /* indigo/azul oscuro */
+      --accent-2: #2dd4bf;   /* turquesa suave para botones */
+      --accent-2-text: #06201c;
+      --warn: #b45309;
+
+      /* “Aire” */
+      --radius: 16px;
+      --pad: 22px;
+      --gap: 18px;
+      --rowgap: 14px;
+    }
+
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--txt);
+      line-height: 1.45;
+    }
+
+    .wrap{
+      max-width: 1040px;
+      margin: 34px auto;
+      padding: 0 18px 42px;
+    }
+
+    h1{
+      font-size: 22px;
+      margin: 0 0 16px;
+      letter-spacing: -0.2px;
+    }
+
+    .subtitle{
+      margin: 0 0 22px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap: var(--gap);
+      align-items: start;
+    }
+    @media (min-width: 980px){
+      .grid{ grid-template-columns: 1.12fr 0.88fr; }
+    }
+
+    .card{
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: var(--pad);
+      box-shadow: var(--shadow);
+    }
+
+    .card h2{
+      margin: 0 0 12px;
+      font-size: 14px;
+      color: var(--accent);
+      font-weight: 750;
+      letter-spacing: 0.2px;
+      text-transform: uppercase;
+    }
+
+    .row{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap: var(--rowgap);
+      margin: 14px 0;
+    }
+    @media (min-width: 720px){
+      .row{ grid-template-columns: 1fr 1fr; }
+    }
+
+    label{
+      display:block;
+      font-size: 12.5px;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    input, select{
+      width:100%;
+      padding: 12px 12px;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--txt);
+      outline: none;
+      font-size: 14px;
+    }
+
+    input:focus, select:focus{
+      border-color: rgba(27, 42, 91, 0.55);
+      box-shadow: 0 0 0 4px rgba(27, 42, 91, 0.12);
+    }
+
+    .btns{
+      display:flex;
+      gap: 12px;
+      flex-wrap:wrap;
+      margin-top: 18px;
+      align-items:center;
+    }
+
+    button{
+      border: 0;
+      border-radius: 12px;
+      padding: 11px 14px;
+      font-weight: 700;
+      cursor: pointer;
+      background: var(--accent-2);
+      color: var(--accent-2-text);
+      box-shadow: 0 8px 16px rgba(45, 212, 191, 0.18);
+    }
+
+    button:hover{ filter: brightness(0.98); }
+    button:active{ transform: translateY(1px); }
+
+    button.secondary{
+      background: #fff;
+      color: var(--txt);
+      border: 1px solid var(--border);
+      box-shadow: none;
+    }
+
+    .note{
+      font-size: 12.5px;
+      color: var(--muted);
+      margin-top: 16px;
+      padding: 12px 12px;
+      border-radius: 12px;
+      background: #f8fafc;
+      border: 1px dashed #dbe3ef;
+    }
+    .warn{ color: var(--warn); font-weight: 700; }
+
+    .out{
+      display:grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin-top: 10px;
+    }
+    @media (min-width: 720px){
+      .out{ grid-template-columns: 1fr 1fr; }
+    }
+
+    .kpi{
+      background: #fbfcff;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 14px;
+    }
+
+    .kpi b{
+      display:block;
+      font-size: 12.5px;
+      color: var(--muted);
+      font-weight: 650;
+      margin-bottom: 8px;
+    }
+
+    .kpi span{
+      font-size: 18px;
+      font-weight: 800;
+      letter-spacing: 0.2px;
+      color: var(--accent);
+    }
+
+    .kpi.wide{ grid-column: 1 / -1; }
+
+    .units{
+      margin-top: 14px;
+      font-size: 12.5px;
+      color: var(--muted);
+    }
+
+    code{
+      background: #eef2ff;
+      border: 1px solid #e0e7ff;
+      padding: 2px 6px;
+      border-radius: 10px;
+      color: #1e293b;
+      font-size: 12px;
+    }
+  </style>
+</head>
+
+<body>
+<div class="wrap">
+  <h1>Calculadora de tensiones (base cm): σ = N/A − (M·y)/I y σ<sub>VM</sub></h1>
+  <p class="subtitle">
+    Entradas geométricas en cm (A cm², I cm⁴, S cm³, y cm, t cm). Momento M en kN·m (convertido a kN·cm internamente).
+  </p>
+
+  <div class="grid">
+    <!-- ENTRADAS -->
+    <div class="card">
+      <h2>Entradas</h2>
+
+      <div class="row">
+        <div>
+          <label>Axil N (kN) — signo (+ tracción, − compresión)</label>
+          <input id="N" type="number" step="any" value="0">
+        </div>
+        <div>
+          <label>Momento flector M (kN·m) — se convierte a kN·cm internamente</label>
+          <input id="M" type="number" step="any" value="0">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Cortante V (kN)</label>
+          <input id="V" type="number" step="any" value="0">
+        </div>
+        <div>
+          <label>Posición y (cm) desde el eje neutro (con signo)</label>
+          <input id="y" type="number" step="any" value="0">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Área A (cm²)</label>
+          <input id="A" type="number" step="any" value="1">
+        </div>
+        <div>
+          <label>Momento de inercia I (cm⁴)</label>
+          <input id="I" type="number" step="any" value="1">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>Modo de τ (tensión tangencial)</label>
+          <select id="tauMode">
+            <option value="avg">τ media = V / A</option>
+            <option value="vsi">τ puntual = V·S / (I·t)</option>
+          </select>
+        </div>
+        <div>
+          <label>Momento estático S (cm³) — solo si τ puntual</label>
+          <input id="S" type="number" step="any" value="0">
+        </div>
+      </div>
+
+      <div class="row">
+        <div>
+          <label>t (cm) — espesor/ancho efectivo en el punto (solo si τ puntual)</label>
+          <input id="t" type="number" step="any" value="1">
+        </div>
+        <div>
+          <label>Decimales</label>
+          <input id="dec" type="number" step="1" min="0" max="8" value="3">
+        </div>
+      </div>
+
+      <div class="btns">
+        <button onclick="calc()">Calcular</button>
+        <button class="secondary" onclick="resetAll()">Reset</button>
+      </div>
+
+      <div class="note">
+        <span class="warn">Nota:</span> si no quieres introducir <b>S</b> y <b>t</b>, usa <b>τ media</b>.
+        Con <b>τ puntual</b> aplicas <code>V·S/(I·t)</code>.
+      </div>
+    </div>
+
+    <!-- SALIDAS -->
+    <div class="card">
+      <h2>Resultados (kN/cm²)</h2>
+
+      <div class="out">
+        <div class="kpi"><b>σ_axil = N/A</b><span id="sigmaA">—</span></div>
+        <div class="kpi"><b>σ_flexión = (M·y)/I</b><span id="sigmaB">—</span></div>
+
+        <div class="kpi"><b>σ_total = N/A − (M·y)/I</b><span id="sigma">—</span></div>
+        <div class="kpi"><b>τ</b><span id="tau">—</span></div>
+
+        <div class="kpi wide">
+          <b>σ<sub>VM</sub> = √(σ² + 3τ²) (Von Mises, σy = 0)</b>
+          <span id="svm">—</span>
+        </div>
+      </div>
+
+      <div class="units">
+        Unidades: A (cm²), I (cm⁴), S (cm³), y (cm), t (cm), N,V (kN), M (kN·m → kN·cm).
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const g = id => document.getElementById(id);
+
+  function fmt(x, d){
+    if (!isFinite(x)) return "—";
+    return Number(x).toFixed(d);
+  }
+
+  function calc(){
+    const N = Number(g("N").value);
+    const M_kNm = Number(g("M").value);
+    const V = Number(g("V").value);
+    const y = Number(g("y").value);
+    const A = Number(g("A").value);
+    const I = Number(g("I").value);
+    const mode = g("tauMode").value;
+    const S = Number(g("S").value);
+    const t = Number(g("t").value);
+    const d = Math.max(0, Math.min(8, parseInt(g("dec").value || "3", 10)));
+
+    if (A === 0 || I === 0){
+      alert("A e I no pueden ser 0.");
+      return;
+    }
+    if (mode === "vsi" && t === 0){
+      alert("t no puede ser 0 en modo τ puntual.");
+      return;
+    }
+
+    // M en kN·m -> kN·cm (base cm)
+    const M = M_kNm * 100.0;
+
+    const sigma_ax = N / A;
+    const sigma_b  = (M * y) / I;
+
+    // σ_total = N/A − (M·y)/I
+    const sigma = sigma_ax - sigma_b;
+
+    // τ: media o puntual con S
+    let tau;
+    if (mode === "avg"){
+      tau = V / A;
+    } else {
+      tau = (V * S) / (I * t);
+    }
+
+    // Von Mises (estado plano, σy = 0): √(σ² + 3τ²)
+    const svm = Math.sqrt((sigma*sigma) + 3.0*(tau*tau));
+
+    g("sigmaA").textContent = fmt(sigma_ax, d);
+    g("sigmaB").textContent = fmt(sigma_b, d);
+    g("sigma").textContent  = fmt(sigma, d);
+    g("tau").textContent    = fmt(tau, d);
+    g("svm").textContent    = fmt(svm, d);
+  }
+
+  function resetAll(){
+    ["N","M","V","y","S"].forEach(id => g(id).value = 0);
+    ["A","I","t"].forEach(id => g(id).value = 1);
+    g("dec").value = 3;
+    g("tauMode").value = "avg";
+    ["sigmaA","sigmaB","sigma","tau","svm"].forEach(id => g(id).textContent = "—");
+  }
+</script>
+</body>
+</html>
